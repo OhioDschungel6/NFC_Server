@@ -10,10 +10,13 @@ key3DES = bytearray([0x49, 0x45, 0x4D, 0x4B, 0x41, 0x45, 0x52, 0x42, 0x21, 0x4E,
 # Default AES-Key
 keyAES = bytearray([0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0])
 
-class UltralightAuthentifier(StreamRequestHandler):
+class Authentifier(StreamRequestHandler):
     def handle(self:StreamRequestHandler):
-        #handleUltralightC(self)
-        handleDesfire(self)
+        device = self.rfile.read(1)
+        if(device[0] == 0):
+            handleUltralightC(self)
+        elif(device[0] == 1):
+            handleDesfire(self)
 
 
 def handleUltralightC(handler:StreamRequestHandler):
@@ -109,6 +112,6 @@ def handleDesfire(handler: StreamRequestHandler):
 
 
 if __name__ == '__main__':
-    webServer = ThreadingTCPServer(("", 80), UltralightAuthentifier)
+    webServer = ThreadingTCPServer(("", 80), Authentifier)
     print("Started")
     webServer.serve_forever()
