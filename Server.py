@@ -125,8 +125,7 @@ def handle3K3DESAuth(handler: StreamRequestHandler):
         print(''.join('{:02x}'.format(x) for x in RndAPrime))
     if (RndAPrime == RndAPrime2):
         print("Authentificated succesfully")
-        #TODO 24Byte
-        SessenKey = RndA[0:4] + RndB[0:4] + RndA[4:8] + RndB[4:8] +RndA[4:8] + RndB[4:8]
+        SessenKey = RndA[0:4] + RndB[0:4] + RndA[6:12] + RndB[6:12] +RndA[12:16] + RndB[12:16]
         if (debug):
             print("SessenKey")
         print(''.join('{:02x}'.format(x) for x in SessenKey))
