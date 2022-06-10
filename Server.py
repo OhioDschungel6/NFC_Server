@@ -12,6 +12,8 @@ key3DES = bytearray(
      0x00, 0x00, 0x00, 0x00, 0x00])
 # Default AES-Key
 keyAES = bytearray([0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0])
+unitTest = False
+debug = False
 
 
 class Authentifier(StreamRequestHandler):
@@ -29,7 +31,6 @@ class Authentifier(StreamRequestHandler):
 
 
 def handle2K3DESAuth(handler: StreamRequestHandler):
-    debug = True
     # Step 0: Get ID
     UID = handler.rfile.read(7)
     if (debug):
@@ -42,7 +43,8 @@ def handle2K3DESAuth(handler: StreamRequestHandler):
         print("ekRndB")
         print(''.join('{:02x}'.format(x) for x in ekRndB))
     RndA = get_random_bytes(8)
-    # RndA = bytearray([0xC9 ,0x6C ,0xE3 ,0x5E ,0x4D ,0x60 ,0x87 ,0xF2])
+    if(unitTest):
+        RndA = bytearray([0xC9 ,0x6C ,0xE3 ,0x5E ,0x4D ,0x60 ,0x87 ,0xF2])
     if (debug):
         print("RndA")
         print(''.join('{:02x}'.format(x) for x in RndA))
@@ -73,16 +75,18 @@ def handle2K3DESAuth(handler: StreamRequestHandler):
     if (RndAPrime == RndAPrime2):
         print("Authentificated succesfully")
         SessenKey = RndA[0:4] + RndB[0:4] + RndA[4:8] + RndB[4:8]
+        if(key3DES[0:8] == key3DES[8:16]):
+            SessenKey = RndA[0:4] + RndB[0:4] + RndA[0:4] + RndB[0:4]
+
         if (debug):
             print("SessenKey")
-        print(''.join('{:02x}'.format(x) for x in SessenKey))
+            print(''.join('{:02x}'.format(x) for x in SessenKey))
         handler.wfile.write(SessenKey)
         handler.wfile.flush()
     else:
         print("Error")
 
 def handle3K3DESAuth(handler: StreamRequestHandler):
-    debug = True
     # Step 0: Get ID
     UID = handler.rfile.read(7)
     if (debug):
@@ -95,7 +99,8 @@ def handle3K3DESAuth(handler: StreamRequestHandler):
         print("ekRndB")
         print(''.join('{:02x}'.format(x) for x in ekRndB))
     RndA = get_random_bytes(16)
-    # RndA = bytearray([0x36 ,0xC5 ,0xF8 ,0xBF ,0x4A ,0x09 ,0xAC ,0x23 ,0x9E ,0x8D ,0xA0 ,0xC7 ,0x32 ,0x51, 0xD4 ,0xAB])
+    if(unitTest):
+        RndA = bytearray([0x36 ,0xC5 ,0xF8 ,0xBF ,0x4A ,0x09 ,0xAC ,0x23 ,0x9E ,0x8D ,0xA0 ,0xC7 ,0x32 ,0x51, 0xD4 ,0xAB])
     if (debug):
         print("RndA")
         print(''.join('{:02x}'.format(x) for x in RndA))
@@ -125,10 +130,10 @@ def handle3K3DESAuth(handler: StreamRequestHandler):
         print(''.join('{:02x}'.format(x) for x in RndAPrime))
     if (RndAPrime == RndAPrime2):
         print("Authentificated succesfully")
-        SessenKey = RndA[0:4] + RndB[0:4] + RndA[6:12] + RndB[6:12] +RndA[12:16] + RndB[12:16]
+        SessenKey = RndA[0:4] + RndB[0:4] + RndA[6:10] + RndB[6:10] +RndA[12:16] + RndB[12:16]
         if (debug):
             print("SessenKey")
-        print(''.join('{:02x}'.format(x) for x in SessenKey))
+            print(''.join('{:02x}'.format(x) for x in SessenKey))
         handler.wfile.write(SessenKey)
         handler.wfile.flush()
     else:
@@ -136,23 +141,21 @@ def handle3K3DESAuth(handler: StreamRequestHandler):
 
 
 def handleAESAuth(handler: StreamRequestHandler):
-    print("AES go")
     # Step 0: Get ID
-    debug = True
     UID = handler.rfile.read(7)
     if (debug):
         print("UID")
         print(''.join('{:02x}'.format(x) for x in UID))
 
     # Step 3
-    print("Received message")
     decryptor = AES.new(keyAES, AES.MODE_CBC, bytearray(16))
     ekRndB = handler.rfile.read(16)  # ek(RndB)
     if (debug):
         print("ekRndB")
         print(''.join('{:02x}'.format(x) for x in ekRndB))
     RndA = get_random_bytes(16)
-    # RndA = bytearray([0xF4 ,0x4B ,0x26 ,0xF5 ,0x68 ,0x6F ,0x3A ,0x39 ,0x1C ,0xD3 ,0x8E ,0xBD ,0x10 ,0x77 ,0x22 ,0x81]);
+    if(unitTest):
+        RndA = bytearray([0xF4 ,0x4B ,0x26 ,0xF5 ,0x68 ,0x6F ,0x3A ,0x39 ,0x1C ,0xD3 ,0x8E ,0xBD ,0x10 ,0x77 ,0x22 ,0x81])
     if (debug):
         print("RndA")
         print(''.join('{:02x}'.format(x) for x in RndA))
@@ -185,6 +188,9 @@ def handleAESAuth(handler: StreamRequestHandler):
     if (RndAPrime == RndAPrime2):
         print("Authentificated succesfully")
         SessenKey = RndA[0:4] + RndB[0:4] + RndA[12:16] + RndB[12:16]
+        if (debug):
+            print("SessenKey")
+            print(''.join('{:02x}'.format(x) for x in SessenKey))
         handler.wfile.write(SessenKey)
         handler.wfile.flush()
     else:
