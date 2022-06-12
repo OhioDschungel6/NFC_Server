@@ -82,9 +82,10 @@ def changeKey(handler: StreamRequestHandler):
     keylength = KEYLENGTH[keytype]
     isSameKey = True #If another key than 0 should be changed in the future lol
     buffer = []
-    keyVersion = 1
+    keyVersion = 0x01
     keyNr = 0
     key = get_random_bytes(keylength)
+    # key = bytearray([0x00 ,0x10 ,0x20 ,0x30 ,0x40 ,0x50 ,0x60 ,0x70 ,0x80 ,0x90 ,0xA0 ,0xB0 ,0xB0 ,0xA0 ,0x90 ,0x80])
     if appId == bytes(3):
         keyNr |= keytype
         key = bytes(keylength)
@@ -108,11 +109,11 @@ def changeKey(handler: StreamRequestHandler):
         buffer.extend(bytes(blockSize-lastBlockSize))
 
     if authType == KEYTYPE_2K3DES:
-        encryptor = DES3.new(key, DES3.MODE_CBC)
+        encryptor = DES3.new(sessionKey, DES3.MODE_CBC,iv=bytearray(8))
     elif authType == KEYTYPE_3K3DES:
-        encryptor = DES3.new(key, DES3.MODE_CBC)
+        encryptor = DES3.new(sessionKey, DES3.MODE_CBC,iv=bytearray(8))
     elif authType == KEYTYPE_AES:
-        encryptor = AES.new(key, AES.MODE_CBC)
+        encryptor = AES.new(sessionKey, AES.MODE_CBC,iv=bytearray(16))
     else:
         return
 
@@ -122,16 +123,17 @@ def changeKey(handler: StreamRequestHandler):
     handler.wfile.write(bytes(msg))
     handler.wfile.flush()
 
-    statusCode = handler.rfile.read(1)
-
+    statusCode = handler.rfile.read(1)[0]
     if statusCode == 0:
         # Write key to database
         connection = sqlite3.connect("keys.sqlite")
         if appId == bytes(3):
-            data = connection.execute("insert or replace into MasterKeys (uid, keytype, key) values (?,?,?)",(UID,keytype,key))
+            connection.execute("insert or replace into MasterKeys (uid, keytype, key) values (?,?,?)",(UID,keytype,key))
         else:
-            data = connection.execute("insert or replace into AppKeys (uid, keytype, key, appId, name) values (?,?,?,?,?)",(UID,keytype,key,appId,name))
+            connection.execute("insert or replace into AppKeys (uid, keytype, key, appId, name) values (?,?,?,?,?)",(UID,keytype,key,appId,name))
+        connection.commit()
         connection.close()
+        print("Change key succesful")
 
 
 def getAppId(handler: StreamRequestHandler):
@@ -146,7 +148,7 @@ def getAppId(handler: StreamRequestHandler):
     if(row is None):
         appId = bytes(3)
     else:
-        appId = row["appId"]
+        appId = row[0]
     handler.wfile.write(appId)
     handler.wfile.flush()
 
@@ -167,8 +169,7 @@ def authenticate(handler: StreamRequestHandler):
     if(row is None):
         key = DEFAULT_KEY[0:KEYLENGTH[keytype]]
     else:
-        key = row["key"][0:KEYLENGTH[keytype]]
-
+        key = row[0][0:KEYLENGTH[keytype]]
     rndSize = ROUNDSIZE[keytype]
     # Step 3
     if keytype == KEYTYPE_2K3DES:
