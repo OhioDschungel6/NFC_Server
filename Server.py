@@ -68,28 +68,36 @@ class ConnectionHandler(StreamRequestHandler):
         elif (mode[0] == 0x4A):
             print("Verify android")
             verifyAndroid(self)
+        elif (mode[0] == 0x56):
+            print("Save public key")
+            safePublicKey(self)
 
+def safePublicKey(handler: StreamRequestHandler):
+    userId = handler.rfile.read(8)
+    keyLength = handler.rfile.read(1)[0]
+    publicKey = handler.rfile.read(keyLength)
+    connection = sqlite3.connect("keys.sqlite")
+    connection.execute("insert or replace into AndroidKeys (uid, publicKey) values (?,?)",
+                       (userId, publicKey))
+    connection.commit()
+    connection.close()
 
-# def verifyAndroid(handler: StreamRequestHandler):
-def verifyAndroid():
-    signedData = bytes([ 48, 68, 2, 32, 122, 235, 48, 169, 0, 119, 114,172, 15, 13, 6, 147, 112, 122, 144, 145, 184, 37, 136, 92, 90, 168, 214, 67, 112, 155, 129, 98, 130, 201, 173, 158, 2, 32, 25, 239, 199, 129, 227, 184, 229, 171, 21, 47, 66, 201, 54, 93, 110, 15, 249, 234, 199, 60, 208, 21, 142, 96, 226, 110, 145, 103, 152, 152, 5, 202])
-    pk = bytearray([ 48, 89, 48, 19, 6, 7, 42, 134, 72, 206, 61, 2, 1, 6, 8, 42, 134, 72, 206, 61, 3, 1, 7, 3, 66, 0, 4, 64, 106, 232, 62, 2, 226, 36, 192, 150, 174, 242, 18, 168, 239, 191, 116, 21, 112, 193, 110, 220, 251, 217, 67, 144, 126, 128, 230, 106, 171, 215, 29, 21, 17, 103, 221, 12, 143, 195, 241, 134, 56, 58, 242, 198, 235, 200, 6, 124, 120, 217, 111, 140, 213, 8, 65, 195, 139, 143, 149, 80, 155, 40, 2])
-    publicKey = ECC.import_key(pk,)
-    dataToSign = bytearray([0,0,0,0,0,0,0,0])
+def verifyAndroid(handler: StreamRequestHandler):
+    userId = handler.rfile.read(8)
+    dataToSign = get_random_bytes(16)
+    handler.wfile.write(dataToSign)
+    connection = sqlite3.connect("keys.sqlite")
+    data = connection.execute("Select publicKey from AndroidKeys where uid=?", (userId,))
+    row = data.fetchone()
+    if (row is None):
+        print("Key does not exist.")
+        return
 
-    print("pk")
-    print(''.join('{:02x}'.format(x) for x in pk))
-    print("signedData")
-    print(''.join('{:02x}'.format(x) for x in signedData))
-    print("publicKey")
-    print(''.join('{:02x}'.format(x) for x in publicKey.export_key(format = 'DER')))
+    pk = row[0]
+    publicKey = ECC.import_key(pk)
 
-    # userId = handler.rfile.read(8) #TODO
-    # dataToSign = get_random_bytes(16)
-    # handler.wfile.write(dataToSign)
-    # publicKey = 1 #TODO getPublicKey
-    # signedDataLength = handler.rfile.read(1)[0]
-    # signedData = handler.rfile.read(signedDataLength)
+    signedDataLength = handler.rfile.read(1)[0]
+    signedData = handler.rfile.read(signedDataLength)
 
     hashedDataToSign = SHA256.new(dataToSign)
     verifier = DSS.new(publicKey, 'fips-186-3', encoding='der')
@@ -98,7 +106,6 @@ def verifyAndroid():
         print("Android auth succesful.")
     except ValueError as error:
         print("Android auth failed.")
-        print(error)
 
 
 def changeKey(handler: StreamRequestHandler):
