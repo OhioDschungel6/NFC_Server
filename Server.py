@@ -1,14 +1,13 @@
 from socketserver import ThreadingTCPServer, StreamRequestHandler, TCPServer
 from Crypto.Cipher import DES3
 from Crypto.Cipher import AES
+from Crypto.Hash import SHA256
+from Crypto.PublicKey import ECC
+from Crypto.Signature import DSS
 from Crypto.Random import get_random_bytes
 import sqlite3
 import zlib
 
-# 3DES-Key (This is the standard key according to the NPX specification)
-# key3DES = bytearray(
-#     [0x49, 0x45, 0x4D, 0x4B, 0x41, 0x45, 0x52, 0x42, 0x21, 0x4E, 0x41, 0x43, 0x55, 0x4F, 0x59, 0x46, 0x49, 0x45, 0x4D,
-#      0x4B, 0x41, 0x45, 0x52, 0x42])
 DEFAULT_KEY = bytearray(
     [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
      0x00, 0x00, 0x00, 0x00, 0x00])
@@ -23,34 +22,35 @@ KEYTYPE_2K3DES = 0x00
 KEYTYPE_3K3DES = 0x20
 KEYTYPE_AES = 0x80
 
-KEYLENGTH ={
-    KEYTYPE_2K3DES : 24,
-    KEYTYPE_3K3DES : 24,
-    KEYTYPE_AES : 16
+KEYLENGTH = {
+    KEYTYPE_2K3DES: 24,
+    KEYTYPE_3K3DES: 24,
+    KEYTYPE_AES: 16
 }
-ROUNDSIZE ={
-    KEYTYPE_2K3DES : 8,
-    KEYTYPE_3K3DES : 16,
-    KEYTYPE_AES : 16
-}
-
-BLOCKSIZE ={
-    KEYTYPE_2K3DES : 8,
-    KEYTYPE_3K3DES : 8,
-    KEYTYPE_AES : 16
+ROUNDSIZE = {
+    KEYTYPE_2K3DES: 8,
+    KEYTYPE_3K3DES: 16,
+    KEYTYPE_AES: 16
 }
 
-TESTDATA ={
-    KEYTYPE_2K3DES : bytearray([0xC9 ,0x6C ,0xE3 ,0x5E ,0x4D ,0x60 ,0x87 ,0xF2]),
-    KEYTYPE_3K3DES : bytearray([0x36 ,0xC5 ,0xF8 ,0xBF ,0x4A ,0x09 ,0xAC ,0x23 ,0x9E ,0x8D ,0xA0 ,0xC7 ,0x32 ,0x51, 0xD4 ,0xAB]),
-    KEYTYPE_AES : bytearray([0xF4 ,0x4B ,0x26 ,0xF5 ,0x68 ,0x6F ,0x3A ,0x39 ,0x1C ,0xD3 ,0x8E ,0xBD ,0x10 ,0x77 ,0x22 ,0x81])
+BLOCKSIZE = {
+    KEYTYPE_2K3DES: 8,
+    KEYTYPE_3K3DES: 8,
+    KEYTYPE_AES: 16
+}
+
+TESTDATA = {
+    KEYTYPE_2K3DES: bytearray([0xC9, 0x6C, 0xE3, 0x5E, 0x4D, 0x60, 0x87, 0xF2]),
+    KEYTYPE_3K3DES: bytearray(
+        [0x36, 0xC5, 0xF8, 0xBF, 0x4A, 0x09, 0xAC, 0x23, 0x9E, 0x8D, 0xA0, 0xC7, 0x32, 0x51, 0xD4, 0xAB]),
+    KEYTYPE_AES: bytearray(
+        [0xF4, 0x4B, 0x26, 0xF5, 0x68, 0x6F, 0x3A, 0x39, 0x1C, 0xD3, 0x8E, 0xBD, 0x10, 0x77, 0x22, 0x81])
 }
 
 sessionKeys = {}
 
-unitTest = True
+unitTest = False
 debug = False
-
 
 
 class ConnectionHandler(StreamRequestHandler):
@@ -65,6 +65,40 @@ class ConnectionHandler(StreamRequestHandler):
         elif (mode[0] == 0x6A):
             print("GetAppId")
             getAppId(self)
+        elif (mode[0] == 0x4A):
+            print("Verify android")
+            verifyAndroid(self)
+
+
+# def verifyAndroid(handler: StreamRequestHandler):
+def verifyAndroid():
+    signedData = bytearray([ 48, 68, 2, 32, 122, 235, 48, 169, 0, 119, 114,172, 15, 13, 6, 147, 112, 122, 144, 145, 184, 37, 136, 92, 90, 168, 214, 67, 112, 155, 129, 98, 130, 201, 173, 158, 2, 32, 25, 239, 199, 129, 227, 184, 229, 171, 21, 47, 66, 201, 54, 93, 110, 15, 249, 234, 199, 60, 208, 21, 142, 96, 226, 110, 145, 103, 152, 152, 5, 202])
+    pk = bytearray([ 48, 89, 48, 19, 6, 7, 42, 134, 72, 206, 61, 2, 1, 6, 8, 42, 134, 72, 206, 61, 3, 1, 7, 3, 66, 0, 4, 64, 106, 232, 62, 2, 226, 36, 192, 150, 174, 242, 18, 168, 239, 191, 116, 21, 112, 193, 110, 220, 251, 217, 67, 144, 126, 128, 230, 106, 171, 215, 29, 21, 17, 103, 221, 12, 143, 195, 241, 134, 56, 58, 242, 198, 235, 200, 6, 124, 120, 217, 111, 140, 213, 8, 65, 195, 139, 143, 149, 80, 155, 40, 2])
+    publicKey = ECC.import_key(pk,)
+    dataToSign = bytearray([0,0,0,0,0,0,0,0])
+
+    print("pk")
+    print(''.join('{:02x}'.format(x) for x in pk))
+    print("signedData")
+    print(''.join('{:02x}'.format(x) for x in signedData))
+    print("publicKey")
+    print(''.join('{:02x}'.format(x) for x in publicKey.export_key(format = 'DER')))
+
+    # userId = handler.rfile.read(8) #TODO
+    # dataToSign = get_random_bytes(16)
+    # handler.wfile.write(dataToSign)
+    # publicKey = 1 #TODO getPublicKey
+    # signedDataLength = handler.rfile.read(1)[0]
+    # signedData = handler.rfile.read(signedDataLength)
+
+    hashedDataToSign = SHA256.new(dataToSign)
+    verifier = DSS.new(publicKey, 'fips-186-3', encoding='der')
+    try:
+        verifier.verify(hashedDataToSign, signedData)
+        print("Android auth succesful.")
+    except ValueError as error:
+        print("Android auth failed.")
+        print(error)
 
 
 def changeKey(handler: StreamRequestHandler):
@@ -80,7 +114,7 @@ def changeKey(handler: StreamRequestHandler):
     if keytype == KEYTYPE_2K3DES:
         return
     keylength = KEYLENGTH[keytype]
-    isSameKey = True #If another key than 0 should be changed in the future lol
+    isSameKey = True  # If another key than 0 should be changed in the future lol
     buffer = []
     keyVersion = 0x01
     keyNr = 0
@@ -93,27 +127,27 @@ def changeKey(handler: StreamRequestHandler):
 
     buffer.extend(key)
     if not isSameKey:
-        #Currently not supported
+        # Currently not supported
         return
     if keytype == KEYTYPE_AES:
         buffer.append(keyVersion)
-    crc32 = (zlib.crc32(bytes(cmd+buffer)) ^ 0xffffffff).to_bytes(4, byteorder="little")
+    crc32 = (zlib.crc32(bytes(cmd + buffer)) ^ 0xffffffff).to_bytes(4, byteorder="little")
     buffer.extend(crc32)
     if not isSameKey:
-        #Currently not supported
+        # Currently not supported
         return
     (authType, sessionKey) = sessionKeys[UID]
     blockSize = BLOCKSIZE[authType]
     lastBlockSize = (len(buffer) % blockSize)
     if lastBlockSize != 0:
-        buffer.extend(bytes(blockSize-lastBlockSize))
+        buffer.extend(bytes(blockSize - lastBlockSize))
 
     if authType == KEYTYPE_2K3DES:
-        encryptor = DES3.new(sessionKey, DES3.MODE_CBC,iv=bytearray(8))
+        encryptor = DES3.new(sessionKey, DES3.MODE_CBC, iv=bytearray(8))
     elif authType == KEYTYPE_3K3DES:
-        encryptor = DES3.new(sessionKey, DES3.MODE_CBC,iv=bytearray(8))
+        encryptor = DES3.new(sessionKey, DES3.MODE_CBC, iv=bytearray(8))
     elif authType == KEYTYPE_AES:
-        encryptor = AES.new(sessionKey, AES.MODE_CBC,iv=bytearray(16))
+        encryptor = AES.new(sessionKey, AES.MODE_CBC, iv=bytearray(16))
     else:
         return
 
@@ -128,9 +162,11 @@ def changeKey(handler: StreamRequestHandler):
         # Write key to database
         connection = sqlite3.connect("keys.sqlite")
         if appId == bytes(3):
-            connection.execute("insert or replace into MasterKeys (uid, keytype, key) values (?,?,?)",(UID,keytype,key))
+            connection.execute("insert or replace into MasterKeys (uid, keytype, key) values (?,?,?)",
+                               (UID, keytype, key))
         else:
-            connection.execute("insert or replace into AppKeys (uid, keytype, key, appId, name) values (?,?,?,?,?)",(UID,keytype,key,appId,name))
+            connection.execute("insert or replace into AppKeys (uid, keytype, key, appId, name) values (?,?,?,?,?)",
+                               (UID, keytype, key, appId, name))
         connection.commit()
         connection.close()
         print("Change key succesful")
@@ -141,11 +177,11 @@ def getAppId(handler: StreamRequestHandler):
 
     # Fetch Ids from database
     connection = sqlite3.connect("keys.sqlite")
-    data = connection.execute("Select appId from AppKeys where uid=?",(UID,))
+    data = connection.execute("Select appId from AppKeys where uid=?", (UID,))
 
     row = data.fetchone()
 
-    if(row is None):
+    if (row is None):
         appId = bytes(3)
     else:
         appId = row[0]
@@ -162,11 +198,11 @@ def authenticate(handler: StreamRequestHandler):
     # Fetch key from database
     connection = sqlite3.connect("keys.sqlite")
     if appId == bytes(3):
-        data = connection.execute("Select key from MasterKeys where uid=?",(UID,))
+        data = connection.execute("Select key from MasterKeys where uid=?", (UID,))
     else:
-        data = connection.execute("Select key from AppKeys where uid=?",(UID,))
+        data = connection.execute("Select key from AppKeys where uid=?", (UID,))
     row = data.fetchone()
-    if(row is None):
+    if (row is None):
         key = DEFAULT_KEY[0:KEYLENGTH[keytype]]
     else:
         key = row[0][0:KEYLENGTH[keytype]]
@@ -179,12 +215,12 @@ def authenticate(handler: StreamRequestHandler):
     elif keytype == KEYTYPE_AES:
         decryptor = AES.new(key, AES.MODE_CBC, bytearray(16))
     else:
-        #TODO handle
+        # TODO handle
         return
 
     ekRndB = handler.rfile.read(rndSize)  # ek(RndB)
     RndA = get_random_bytes(rndSize)
-    if(unitTest):
+    if (unitTest):
         RndA = TESTDATA[keytype]
     RndB = bytearray(decryptor.decrypt(ekRndB))
     RndBPrime = RndB[1:rndSize] + RndB[0:1]
@@ -211,7 +247,7 @@ def authenticate(handler: StreamRequestHandler):
     elif keytype == KEYTYPE_3K3DES:
         decryptor = DES3.new(key, DES3.MODE_CBC, iv=ekRndARndBPrime[24:32])
     elif keytype == KEYTYPE_AES:
-        decryptor = AES.new(key, AES.MODE_CBC, iv = ekRndARndBPrime[16:32])
+        decryptor = AES.new(key, AES.MODE_CBC, iv=ekRndARndBPrime[16:32])
 
     RndAPrime = decryptor.decrypt(ekRndAPrime)
     RndAPrime2 = RndA[1:rndSize] + RndA[0:1]
@@ -242,10 +278,10 @@ def authenticate(handler: StreamRequestHandler):
         print("Authenticated succesfully")
         if keytype == KEYTYPE_2K3DES:
             SessionKey = RndA[0:4] + RndB[0:4] + RndA[4:8] + RndB[4:8]
-            if(key[0:8] == key[8:16]):
+            if (key[0:8] == key[8:16]):
                 SessionKey = RndA[0:4] + RndB[0:4] + RndA[0:4] + RndB[0:4]
         elif keytype == KEYTYPE_3K3DES:
-            SessionKey = RndA[0:4] + RndB[0:4] + RndA[6:10] + RndB[6:10] +RndA[12:16] + RndB[12:16]
+            SessionKey = RndA[0:4] + RndB[0:4] + RndA[6:10] + RndB[6:10] + RndA[12:16] + RndB[12:16]
         elif keytype == KEYTYPE_AES:
             SessionKey = RndA[0:4] + RndB[0:4] + RndA[12:16] + RndB[12:16]
 
@@ -269,6 +305,9 @@ if __name__ == '__main__':
     #     print(''.join('{:02x}'.format(x) for x in row[0]))
     #     print(''.join('{:02x}'.format(x) for x in row[2]))
     # connection.close()
-    webServer = ThreadingTCPServer(("", 80), ConnectionHandler)
-    print("Started")
-    webServer.serve_forever()
+
+
+    # webServer = ThreadingTCPServer(("", 80), ConnectionHandler)
+    # print("Started")
+    # webServer.serve_forever()
+    verifyAndroid()
