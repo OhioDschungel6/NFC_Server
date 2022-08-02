@@ -73,7 +73,7 @@ class ConnectionHandler(StreamRequestHandler):
             safePublicKey(self)
 
 def safePublicKey(handler: StreamRequestHandler):
-    userId = handler.rfile.read(8)
+    userId = handler.rfile.read(16)
     keyLength = handler.rfile.read(1)[0]
     publicKey = handler.rfile.read(keyLength)
     connection = sqlite3.connect("keys.sqlite")
@@ -81,9 +81,15 @@ def safePublicKey(handler: StreamRequestHandler):
                        (userId, publicKey))
     connection.commit()
     connection.close()
+    if(debug):
+        print("ID")
+        print(''.join('{:02x}'.format(x) for x in userId))
+        print("PK")
+        print(''.join('{:02x}'.format(x) for x in publicKey))
+
 
 def verifyAndroid(handler: StreamRequestHandler):
-    userId = handler.rfile.read(8)
+    userId = handler.rfile.read(16)
     dataToSign = get_random_bytes(16)
     handler.wfile.write(dataToSign)
     connection = sqlite3.connect("keys.sqlite")
@@ -94,17 +100,25 @@ def verifyAndroid(handler: StreamRequestHandler):
         return
 
     pk = row[0]
-    publicKey = ECC.import_key(pk)
 
     signedDataLength = handler.rfile.read(1)[0]
     signedData = handler.rfile.read(signedDataLength)
 
+    if(debug):
+        print(''.join('{:02x} '.format(x) for x in signedData))
+        print("ID")
+        print(''.join('{:02x} '.format(x) for x in userId))
+        print("PK")
+        print(''.join('{:02x} '.format(x) for x in pk))
+        print("Signature")
+
+    publicKey = ECC.import_key(pk)
     hashedDataToSign = SHA256.new(dataToSign)
     verifier = DSS.new(publicKey, 'fips-186-3', encoding='der')
     try:
-        verifier.verify(hashedDataToSign, signedData)
+        verifier.verify(hashedDataToSign, bytes(signedData))
         print("Android auth succesful.")
-    except ValueError as error:
+    except ValueError:
         print("Android auth failed.")
 
 
@@ -314,7 +328,6 @@ if __name__ == '__main__':
     # connection.close()
 
 
-    # webServer = ThreadingTCPServer(("", 80), ConnectionHandler)
-    # print("Started")
-    # webServer.serve_forever()
-    verifyAndroid()
+    webServer = ThreadingTCPServer(("", 80), ConnectionHandler)
+    print("Started")
+    webServer.serve_forever()
