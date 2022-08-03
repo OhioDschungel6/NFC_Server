@@ -1,3 +1,4 @@
+import threading
 from socketserver import ThreadingTCPServer, StreamRequestHandler, TCPServer
 from Crypto.Cipher import DES3
 from Crypto.Cipher import AES
@@ -7,6 +8,7 @@ from Crypto.Signature import DSS
 from Crypto.Random import get_random_bytes
 import sqlite3
 import zlib
+from ssdpy import SSDPServer
 
 DEFAULT_KEY = bytearray(
     [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -105,12 +107,14 @@ def verifyAndroid(handler: StreamRequestHandler):
     signedData = handler.rfile.read(signedDataLength)
 
     if(debug):
-        print(''.join('{:02x} '.format(x) for x in signedData))
+        print("Data to sign")
+        print(''.join('{:02x} '.format(x) for x in dataToSign))
         print("ID")
         print(''.join('{:02x} '.format(x) for x in userId))
         print("PK")
         print(''.join('{:02x} '.format(x) for x in pk))
         print("Signature")
+        print(''.join('{:02x} '.format(x) for x in signedData))
 
     publicKey = ECC.import_key(pk)
     hashedDataToSign = SHA256.new(dataToSign)
@@ -316,18 +320,8 @@ def authenticate(handler: StreamRequestHandler):
 
 
 if __name__ == '__main__':
-    # uid = bytearray([0x04, 0x41, 0x60, 0x9A, 0xB2, 0x5D, 0x80])
-    # key = bytearray([0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0])
-    # connection = sqlite3.connect("keys.sqlite")
-    # connection.execute("Insert into MasterKeys values (?,?,?)", (uid, KEYTYPE_AES, key))
-    # connection.commit()
-    # data = connection.execute("Select * from MasterKeys where uid=uid")
-    # for row in data:
-    #     print(''.join('{:02x}'.format(x) for x in row[0]))
-    #     print(''.join('{:02x}'.format(x) for x in row[2]))
-    # connection.close()
-
-
     webServer = ThreadingTCPServer(("", 80), ConnectionHandler)
+    ssdpServer = SSDPServer("home-key-pro-door-opener")
     print("Started")
-    webServer.serve_forever()
+    threading.Thread(target=webServer.serve_forever,daemon=True).start()
+    ssdpServer.serve_forever()
