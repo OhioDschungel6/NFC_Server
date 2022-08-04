@@ -8,6 +8,7 @@ from Crypto.Signature import DSS
 from Crypto.Random import get_random_bytes
 import sqlite3
 import zlib
+import socket
 from ssdpy import SSDPServer
 
 DEFAULT_KEY = bytearray(
@@ -321,7 +322,7 @@ def authenticate(handler: StreamRequestHandler):
 
 if __name__ == '__main__':
     webServer = ThreadingTCPServer(("", 80), ConnectionHandler)
-    ssdpServer = SSDPServer("home-key-pro-door-opener")
+    ssdpServer = SSDPServer("home-key-pro-door-opener",device_type="server",location=socket.gethostbyname(socket.gethostname()))
     print("Started")
-    threading.Thread(target=webServer.serve_forever,daemon=True).start()
-    ssdpServer.serve_forever()
+    threading.Thread(target=ssdpServer.serve_forever,daemon=True).start()
+    webServer.serve_forever()
