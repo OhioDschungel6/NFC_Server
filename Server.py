@@ -21,10 +21,6 @@ PORT = 80
 DEFAULT_KEY = bytearray(
     [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
      0x00, 0x00, 0x00, 0x00, 0x00])
-
-DEFAULT_3DES_KEY = bytearray(
-    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-     0x00, 0x00, 0x00, 0x00, 0x00])
 # Default AES-Key
 DEFAULT_AES_KEY = bytearray([0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0])
 
@@ -87,6 +83,9 @@ class ConnectionHandler(StreamRequestHandler):
         elif (mode[0] == 0xDD):
             print ("Delete device")
             deleteKey(self)
+        elif (mode[0] == 0x66):
+            print("Is key known")
+            isKeyKnown(self)
 
 def deleteKey(handler: StreamRequestHandler):
     nonce = get_random_bytes(16)
@@ -218,6 +217,7 @@ def changeKey(handler: StreamRequestHandler):
     key = get_random_bytes(keylength)
     # key = bytearray([0x00 ,0x10 ,0x20 ,0x30 ,0x40 ,0x50 ,0x60 ,0x70 ,0x80 ,0x90 ,0xA0 ,0xB0 ,0xB0 ,0xA0 ,0x90 ,0x80])
     if appId == bytes(3):
+        #TODO set to not zero
         keyNr |= keytype
         key = bytes(keylength)
     cmd = [0xC4, keyNr]
@@ -228,11 +228,11 @@ def changeKey(handler: StreamRequestHandler):
         return
     if keytype == KEYTYPE_AES:
         buffer.append(keyVersion)
+
+    #Calculate crc32 for desfire card
     crc32 = (zlib.crc32(bytes(cmd + buffer)) ^ 0xffffffff).to_bytes(4, byteorder="little")
     buffer.extend(crc32)
-    if not isSameKey:
-        # Currently not supported
-        return
+
     (authType, sessionKey) = sessionKeys[UID]
     blockSize = BLOCKSIZE[authType]
     lastBlockSize = (len(buffer) % blockSize)
@@ -249,8 +249,14 @@ def changeKey(handler: StreamRequestHandler):
         return
 
     encDataframe = encryptor.encrypt(bytes(buffer))
+    originalDataFrameLength = bytes([len(encDataframe)])
+    if(len(encDataframe) % 16 != 0):
+        encDataframe = encDataframe + bytes(16 - (len(encDataframe) % 16))
+
     sharedKeyEncryptor = AES.new(bytes(PRESHARED_KEY, 'utf-8'), AES.MODE_CBC, iv=bytearray(16))
     doubleEncDataframe = sharedKeyEncryptor.encrypt(bytes(encDataframe))
+
+    handler.wfile.write(originalDataFrameLength)
 
     msg = cmd + list(doubleEncDataframe)
     handler.wfile.write(bytes([len(msg)]))
@@ -288,6 +294,21 @@ def getAppId(handler: StreamRequestHandler):
     handler.wfile.write(appId)
     handler.wfile.flush()
 
+def isKeyKnown(handler: StreamRequestHandler):
+    UID = handler.rfile.read(7)
+
+    # Fetch Ids from database
+    connection = sqlite3.connect("keys.sqlite")
+    data = connection.execute("Select uid from MasterKeys where uid=?", (UID,))
+
+    row = data.fetchone()
+    if (row is None):
+        handler.wfile.write(bytes([0]))
+    else:
+        handler.wfile.write(bytes([1]))
+
+    handler.wfile.flush()
+
 
 def authenticate(handler: StreamRequestHandler):
     # Step 0: Get ID
@@ -315,7 +336,6 @@ def authenticate(handler: StreamRequestHandler):
     elif keytype == KEYTYPE_AES:
         decryptor = AES.new(key, AES.MODE_CBC, bytearray(16))
     else:
-        # TODO handle
         return
 
     ekRndB = handler.rfile.read(rndSize)  # ek(RndB)
