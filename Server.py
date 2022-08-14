@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import threading
 from socketserver import ThreadingTCPServer, StreamRequestHandler, TCPServer
 from Crypto.Cipher import DES3
@@ -8,8 +10,13 @@ from Crypto.Signature import DSS
 from Crypto.Random import get_random_bytes
 import sqlite3
 import zlib
+import json
 import socket
-from ssdpy import SSDPServer
+from zeroconf import Zeroconf,ServiceInfo
+
+LOCAL_IP = socket.gethostbyname(socket.gethostname())
+PRESHARED_KEY = "secretKey1234567"
+PORT = 80
 
 DEFAULT_KEY = bytearray(
     [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -74,14 +81,59 @@ class ConnectionHandler(StreamRequestHandler):
         elif (mode[0] == 0x56):
             print("Save public key")
             safePublicKey(self)
+        elif (mode[0] == 0x6D):
+            print("Get all devices")
+            getAllDevices(self)
+        elif (mode[0] == 0xDD):
+            print ("Delete device")
+            deleteKey(self)
+
+def deleteKey(handler: StreamRequestHandler):
+    nonce = get_random_bytes(16)
+    encryptor = AES.new(bytes(PRESHARED_KEY, 'utf-8'), AES.MODE_CBC, bytes(16))
+    ekNonce = encryptor.encrypt(nonce)
+    handler.wfile.write(ekNonce)
+    msg = handler.rfile.read(32)
+    decryptor = AES.new(bytes(PRESHARED_KEY, 'utf-8'), AES.MODE_CBC, bytes(16))
+    msgDecrypted = decryptor.decrypt(msg)
+    uid = msgDecrypted[16:32]
+    nonceShifted = msgDecrypted[0:16]
+    nonceUnShifted = nonceShifted[1:16] + nonceShifted[0:1]
+    if(debug):
+        print("nonce")
+        print(''.join('{:02x}'.format(x) for x in nonce))
+        print("ekNonce")
+        print(''.join('{:02x}'.format(x) for x in ekNonce))
+        print("msg")
+        print(''.join('{:02x}'.format(x) for x in msg))
+        print("msgDecrypted")
+        print(''.join('{:02x}'.format(x) for x in msgDecrypted))
+
+    if(nonce != nonceUnShifted):
+        print("Unauthentic try to delete key")
+        return
+    connection = sqlite3.connect("keys.sqlite")
+    connection.execute("delete from AndroidKeys where uid = (?)", (uid,))
+    connection.execute("delete from AppKeys where uid = (?)", (uid,))
+    connection.commit()
+    connection.close()
 
 def safePublicKey(handler: StreamRequestHandler):
+    print("Safe public key")
     userId = handler.rfile.read(16)
+    nameLength = handler.rfile.read(1)[0]
+    name = handler.rfile.read(nameLength)
     keyLength = handler.rfile.read(1)[0]
     publicKey = handler.rfile.read(keyLength)
+    hmacWriter = handler.rfile.read(32)
+    hmacServer = hmac.new(bytes(PRESHARED_KEY, 'utf-8'), publicKey, hashlib.sha256)
+    hmacSame= hmac.compare_digest(hmacServer.digest(),hmacWriter)
+    if(not hmacSame):
+        print("Non authentic try to write public key")
+        return
     connection = sqlite3.connect("keys.sqlite")
-    connection.execute("insert or replace into AndroidKeys (uid, publicKey) values (?,?)",
-                       (userId, publicKey))
+    connection.execute("insert or replace into AndroidKeys (uid, publicKey,name) values (?,?,?)",
+                       (userId, publicKey,name))
     connection.commit()
     connection.close()
     if(debug):
@@ -91,6 +143,22 @@ def safePublicKey(handler: StreamRequestHandler):
         print(''.join('{:02x}'.format(x) for x in publicKey))
 
 
+def getAllDevices(handler: StreamRequestHandler):
+    connection = sqlite3.connect("keys.sqlite")
+    androidData = connection.execute("Select uid,name from AndroidKeys")
+    desfireData = connection.execute("Select uid,name from AppKeys")
+
+    androidDeviceNames = androidData.fetchall()
+    desfireDeviceNames = desfireData.fetchall()
+
+    jsonData = dict()
+    jsonData["desfire"] = [[''.join('{:02x}'.format(x) for x in uid), name.decode("utf-8")] for uid, name in desfireDeviceNames]
+    jsonData["android"] = [[''.join('{:02x}'.format(x) for x in uid), name.decode("utf-8")] for uid, name in androidDeviceNames]
+    jsonStr = json.dumps(jsonData,separators=(",",":"))
+    connection.close()
+    handler.wfile.write(len(jsonStr).to_bytes(4,"little"))
+    handler.wfile.write(jsonStr.encode("utf-8"))
+
 def verifyAndroid(handler: StreamRequestHandler):
     userId = handler.rfile.read(16)
     dataToSign = get_random_bytes(16)
@@ -98,6 +166,8 @@ def verifyAndroid(handler: StreamRequestHandler):
     connection = sqlite3.connect("keys.sqlite")
     data = connection.execute("Select publicKey from AndroidKeys where uid=?", (userId,))
     row = data.fetchone()
+    connection.commit()
+    connection.close()
     if (row is None):
         print("Key does not exist.")
         return
@@ -123,6 +193,7 @@ def verifyAndroid(handler: StreamRequestHandler):
     try:
         verifier.verify(hashedDataToSign, bytes(signedData))
         print("Android auth succesful.")
+        openDoor()
     except ValueError:
         print("Android auth failed.")
 
@@ -178,7 +249,10 @@ def changeKey(handler: StreamRequestHandler):
         return
 
     encDataframe = encryptor.encrypt(bytes(buffer))
-    msg = cmd + list(encDataframe)
+    sharedKeyEncryptor = AES.new(bytes(PRESHARED_KEY, 'utf-8'), AES.MODE_CBC, iv=bytearray(16))
+    doubleEncDataframe = sharedKeyEncryptor.encrypt(bytes(encDataframe))
+
+    msg = cmd + list(doubleEncDataframe)
     handler.wfile.write(bytes([len(msg)]))
     handler.wfile.write(bytes(msg))
     handler.wfile.flush()
@@ -310,7 +384,7 @@ def authenticate(handler: StreamRequestHandler):
             SessionKey = RndA[0:4] + RndB[0:4] + RndA[6:10] + RndB[6:10] + RndA[12:16] + RndB[12:16]
         elif keytype == KEYTYPE_AES:
             SessionKey = RndA[0:4] + RndB[0:4] + RndA[12:16] + RndB[12:16]
-
+        openDoor()
         sessionKeys[UID] = (keytype, SessionKey)
         if (debug):
             print("Session Key")
@@ -319,10 +393,13 @@ def authenticate(handler: StreamRequestHandler):
     else:
         print("Authenticaten failed")
 
+def openDoor():
+    pass
 
 if __name__ == '__main__':
-    webServer = ThreadingTCPServer(("", 80), ConnectionHandler)
-    ssdpServer = SSDPServer("home-key-pro-door-opener",device_type="server",location=socket.gethostbyname(socket.gethostname()))
+    webServer = ThreadingTCPServer(("", PORT), ConnectionHandler)
     print("Started")
-    threading.Thread(target=ssdpServer.serve_forever,daemon=True).start()
+    zc = Zeroconf()
+    ipAdressAsByte = bytes([int(p) for p in LOCAL_IP.split(".")])
+    zc.register_service(ServiceInfo("_homekeypro._tcp.local.","dooropener._homekeypro._tcp.local.",PORT,addresses=[ipAdressAsByte]))
     webServer.serve_forever()
