@@ -12,17 +12,19 @@ import sqlite3
 import zlib
 import json
 import socket
-from zeroconf import Zeroconf,ServiceInfo
+from zeroconf import Zeroconf, ServiceInfo
 
 LOCAL_IP = socket.gethostbyname(socket.gethostname())
 PRESHARED_KEY = "secretKey1234567"
 PORT = 80
 
-DEFAULT_KEY = bytearray(
-    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-     0x00, 0x00, 0x00, 0x00, 0x00])
+DEFAULT_KEY = bytearray([
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+])
+
 # Default AES-Key
-DEFAULT_AES_KEY = bytearray([0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0])
 
 KEYTYPE_2K3DES = 0x00
 KEYTYPE_3K3DES = 0x20
@@ -47,10 +49,12 @@ BLOCKSIZE = {
 
 TESTDATA = {
     KEYTYPE_2K3DES: bytearray([0xC9, 0x6C, 0xE3, 0x5E, 0x4D, 0x60, 0x87, 0xF2]),
-    KEYTYPE_3K3DES: bytearray(
-        [0x36, 0xC5, 0xF8, 0xBF, 0x4A, 0x09, 0xAC, 0x23, 0x9E, 0x8D, 0xA0, 0xC7, 0x32, 0x51, 0xD4, 0xAB]),
-    KEYTYPE_AES: bytearray(
-        [0xF4, 0x4B, 0x26, 0xF5, 0x68, 0x6F, 0x3A, 0x39, 0x1C, 0xD3, 0x8E, 0xBD, 0x10, 0x77, 0x22, 0x81])
+    KEYTYPE_3K3DES: bytearray([
+        0x36, 0xC5, 0xF8, 0xBF, 0x4A, 0x09, 0xAC, 0x23, 0x9E, 0x8D, 0xA0, 0xC7, 0x32, 0x51, 0xD4, 0xAB
+    ]),
+    KEYTYPE_AES: bytearray([
+        0xF4, 0x4B, 0x26, 0xF5, 0x68, 0x6F, 0x3A, 0x39, 0x1C, 0xD3, 0x8E, 0xBD, 0x10, 0x77, 0x22, 0x81
+    ])
 }
 
 sessionKeys = {}
@@ -61,31 +65,21 @@ debug = False
 
 class ConnectionHandler(StreamRequestHandler):
     def handle(self: StreamRequestHandler):
-        mode = self.rfile.read(1)
-        if (mode[0] == 0xC4):
-            print("Change key")
-            changeKey(self)
-        elif (mode[0] == 0xAA):
-            print("Authenticate")
-            authenticate(self)
-        elif (mode[0] == 0x6A):
-            print("GetAppId")
-            getAppId(self)
-        elif (mode[0] == 0x4A):
-            print("Verify android")
-            verifyAndroid(self)
-        elif (mode[0] == 0x56):
-            print("Save public key")
-            safePublicKey(self)
-        elif (mode[0] == 0x6D):
-            print("Get all devices")
-            getAllDevices(self)
-        elif (mode[0] == 0xDD):
-            print ("Delete device")
-            deleteKey(self)
-        elif (mode[0] == 0x66):
-            print("Is key known")
-            isKeyKnown(self)
+        mode = self.rfile.read(1)[0]
+        commands = {
+            0xC4: ("Change key", changeKey),
+            0xAA: ("Authenticate", authenticate),
+            0x6A: ("GetAppId", getAppId),
+            0x4A: ("Verify android", verifyAndroid),
+            0x56: ("Save public key", safePublicKey),
+            0x6D: ("Get all devices", getAllDevices),
+            0xDD: ("Delete device", deleteKey),
+            0x66: ("Is key known", isKeyKnown),
+        }
+        name, fn = commands[mode]
+        print(name)
+        fn(self)
+
 
 def deleteKey(handler: StreamRequestHandler):
     nonce = get_random_bytes(16)
@@ -99,14 +93,10 @@ def deleteKey(handler: StreamRequestHandler):
     nonceShifted = msgDecrypted[0:16]
     nonceUnShifted = nonceShifted[1:16] + nonceShifted[0:1]
     if(debug):
-        print("nonce")
-        print(''.join('{:02x}'.format(x) for x in nonce))
-        print("ekNonce")
-        print(''.join('{:02x}'.format(x) for x in ekNonce))
-        print("msg")
-        print(''.join('{:02x}'.format(x) for x in msg))
-        print("msgDecrypted")
-        print(''.join('{:02x}'.format(x) for x in msgDecrypted))
+        logBytes("nonce", nonce)
+        logBytes("ekNonce", ekNonce)
+        logBytes("msg", msg)
+        logBytes("msgDecrypted", msgDecrypted)
 
     if(nonce != nonceUnShifted):
         print("Unauthentic try to delete key")
@@ -117,29 +107,32 @@ def deleteKey(handler: StreamRequestHandler):
     connection.commit()
     connection.close()
 
+
 def safePublicKey(handler: StreamRequestHandler):
     print("Safe public key")
-    userId = handler.rfile.read(16)
+    uid = handler.rfile.read(16)
     nameLength = handler.rfile.read(1)[0]
     name = handler.rfile.read(nameLength)
     keyLength = handler.rfile.read(1)[0]
     publicKey = handler.rfile.read(keyLength)
     hmacWriter = handler.rfile.read(32)
-    hmacServer = hmac.new(bytes(PRESHARED_KEY, 'utf-8'), publicKey, hashlib.sha256)
-    hmacSame= hmac.compare_digest(hmacServer.digest(),hmacWriter)
+    hmacServer = hmac.new(
+        bytes(PRESHARED_KEY, 'utf-8'), publicKey, hashlib.sha256
+    )
+    hmacSame = hmac.compare_digest(hmacServer.digest(), hmacWriter)
     if(not hmacSame):
         print("Non authentic try to write public key")
         return
     connection = sqlite3.connect("keys.sqlite")
-    connection.execute("insert or replace into AndroidKeys (uid, publicKey,name) values (?,?,?)",
-                       (userId, publicKey,name))
+    connection.execute(
+        "insert or replace into AndroidKeys (uid, publicKey,name) values (?,?,?)",
+        (uid, publicKey, name)
+    )
     connection.commit()
     connection.close()
     if(debug):
-        print("ID")
-        print(''.join('{:02x}'.format(x) for x in userId))
-        print("PK")
-        print(''.join('{:02x}'.format(x) for x in publicKey))
+        logBytes("ID", uid)
+        logBytes("PK", publicKey)
 
 
 def getAllDevices(handler: StreamRequestHandler):
@@ -150,20 +143,31 @@ def getAllDevices(handler: StreamRequestHandler):
     androidDeviceNames = androidData.fetchall()
     desfireDeviceNames = desfireData.fetchall()
 
-    jsonData = dict()
-    jsonData["desfire"] = [[''.join('{:02x}'.format(x) for x in uid), name.decode("utf-8")] for uid, name in desfireDeviceNames]
-    jsonData["android"] = [[''.join('{:02x}'.format(x) for x in uid), name.decode("utf-8")] for uid, name in androidDeviceNames]
-    jsonStr = json.dumps(jsonData,separators=(",",":"))
+    jsonData = {
+        "desfire": [
+            [toHexString(uid), name.decode("utf-8")]
+            for uid, name in desfireDeviceNames
+        ],
+        "android": [
+            [toHexString(uid), name.decode("utf-8")]
+            for uid, name in androidDeviceNames
+        ]
+    }
+
+    jsonStr = json.dumps(jsonData, separators=(",", ":"))
     connection.close()
-    handler.wfile.write(len(jsonStr).to_bytes(4,"little"))
+    handler.wfile.write(len(jsonStr).to_bytes(4, "little"))
     handler.wfile.write(jsonStr.encode("utf-8"))
 
+
 def verifyAndroid(handler: StreamRequestHandler):
-    userId = handler.rfile.read(16)
+    uid = handler.rfile.read(16)
     dataToSign = get_random_bytes(16)
     handler.wfile.write(dataToSign)
     connection = sqlite3.connect("keys.sqlite")
-    data = connection.execute("Select publicKey from AndroidKeys where uid=?", (userId,))
+    data = connection.execute(
+        "Select publicKey from AndroidKeys where uid=?", (uid,)
+    )
     row = data.fetchone()
     connection.commit()
     connection.close()
@@ -177,14 +181,10 @@ def verifyAndroid(handler: StreamRequestHandler):
     signedData = handler.rfile.read(signedDataLength)
 
     if(debug):
-        print("Data to sign")
-        print(''.join('{:02x} '.format(x) for x in dataToSign))
-        print("ID")
-        print(''.join('{:02x} '.format(x) for x in userId))
-        print("PK")
-        print(''.join('{:02x} '.format(x) for x in pk))
-        print("Signature")
-        print(''.join('{:02x} '.format(x) for x in signedData))
+        logBytes("Data to sign", dataToSign)
+        logBytes("ID", uid)
+        logBytes("PK", pk)
+        logBytes("Signature", signedData)
 
     publicKey = ECC.import_key(pk)
     hashedDataToSign = SHA256.new(dataToSign)
@@ -199,11 +199,11 @@ def verifyAndroid(handler: StreamRequestHandler):
 
 def changeKey(handler: StreamRequestHandler):
     keytype = handler.rfile.read(1)[0]
-    UID = handler.rfile.read(7)
+    uid = handler.rfile.read(7)
     appId = handler.rfile.read(3)
     nameLength = handler.rfile.read(1)[0]
     name = handler.rfile.read(nameLength)
-    if UID not in sessionKeys:
+    if uid not in sessionKeys:
         return
     if keytype not in KEYLENGTH:
         return
@@ -217,7 +217,7 @@ def changeKey(handler: StreamRequestHandler):
     key = get_random_bytes(keylength)
     # key = bytearray([0x00 ,0x10 ,0x20 ,0x30 ,0x40 ,0x50 ,0x60 ,0x70 ,0x80 ,0x90 ,0xA0 ,0xB0 ,0xB0 ,0xA0 ,0x90 ,0x80])
     if appId == bytes(3):
-        #TODO set to not zero
+        # TODO set to not zero
         keyNr |= keytype
         key = bytes(keylength)
     cmd = [0xC4, keyNr]
@@ -229,11 +229,14 @@ def changeKey(handler: StreamRequestHandler):
     if keytype == KEYTYPE_AES:
         buffer.append(keyVersion)
 
-    #Calculate crc32 for desfire card
-    crc32 = (zlib.crc32(bytes(cmd + buffer)) ^ 0xffffffff).to_bytes(4, byteorder="little")
+    # Calculate crc32 for desfire card
+    crc32 = (
+        zlib.crc32(bytes(cmd + buffer)) ^ 0xffffffff
+    ).to_bytes(4, byteorder="little")
+
     buffer.extend(crc32)
 
-    (authType, sessionKey) = sessionKeys[UID]
+    (authType, sessionKey) = sessionKeys[uid]
     blockSize = BLOCKSIZE[authType]
     lastBlockSize = (len(buffer) % blockSize)
     if lastBlockSize != 0:
@@ -253,7 +256,9 @@ def changeKey(handler: StreamRequestHandler):
     if(len(encDataframe) % 16 != 0):
         encDataframe = encDataframe + bytes(16 - (len(encDataframe) % 16))
 
-    sharedKeyEncryptor = AES.new(bytes(PRESHARED_KEY, 'utf-8'), AES.MODE_CBC, iv=bytearray(16))
+    sharedKeyEncryptor = AES.new(
+        bytes(PRESHARED_KEY, 'utf-8'), AES.MODE_CBC, iv=bytearray(16)
+    )
     doubleEncDataframe = sharedKeyEncryptor.encrypt(bytes(encDataframe))
 
     handler.wfile.write(originalDataFrameLength)
@@ -268,22 +273,26 @@ def changeKey(handler: StreamRequestHandler):
         # Write key to database
         connection = sqlite3.connect("keys.sqlite")
         if appId == bytes(3):
-            connection.execute("insert or replace into MasterKeys (uid, keytype, key) values (?,?,?)",
-                               (UID, keytype, key))
+            connection.execute(
+                "insert or replace into MasterKeys (uid, keytype, key) values (?,?,?)",
+                (uid, keytype, key)
+            )
         else:
-            connection.execute("insert or replace into AppKeys (uid, keytype, key, appId, name) values (?,?,?,?,?)",
-                               (UID, keytype, key, appId, name))
+            connection.execute(
+                "insert or replace into AppKeys (uid, keytype, key, appId, name) values (?,?,?,?,?)",
+                (uid, keytype, key, appId, name)
+            )
         connection.commit()
         connection.close()
         print("Change key succesful")
 
 
 def getAppId(handler: StreamRequestHandler):
-    UID = handler.rfile.read(7)
+    uid = handler.rfile.read(7)
 
     # Fetch Ids from database
     connection = sqlite3.connect("keys.sqlite")
-    data = connection.execute("Select appId from AppKeys where uid=?", (UID,))
+    data = connection.execute("Select appId from AppKeys where uid=?", (uid,))
 
     row = data.fetchone()
 
@@ -294,12 +303,13 @@ def getAppId(handler: StreamRequestHandler):
     handler.wfile.write(appId)
     handler.wfile.flush()
 
+
 def isKeyKnown(handler: StreamRequestHandler):
-    UID = handler.rfile.read(7)
+    uid = handler.rfile.read(7)
 
     # Fetch Ids from database
     connection = sqlite3.connect("keys.sqlite")
-    data = connection.execute("Select uid from MasterKeys where uid=?", (UID,))
+    data = connection.execute("Select uid from MasterKeys where uid=?", (uid,))
 
     row = data.fetchone()
     if (row is None):
@@ -313,15 +323,19 @@ def isKeyKnown(handler: StreamRequestHandler):
 def authenticate(handler: StreamRequestHandler):
     # Step 0: Get ID
     keytype = handler.rfile.read(1)[0]
-    UID = handler.rfile.read(7)
+    uid = handler.rfile.read(7)
     appId = handler.rfile.read(3)
 
     # Fetch key from database
     connection = sqlite3.connect("keys.sqlite")
     if appId == bytes(3):
-        data = connection.execute("Select key from MasterKeys where uid=?", (UID,))
+        data = connection.execute(
+            "Select key from MasterKeys where uid=?", (uid,)
+        )
     else:
-        data = connection.execute("Select key from AppKeys where uid=?", (UID,))
+        data = connection.execute(
+            "Select key from AppKeys where uid=?", (uid,)
+        )
     row = data.fetchone()
     if (row is None):
         key = DEFAULT_KEY[0:KEYLENGTH[keytype]]
@@ -375,24 +389,14 @@ def authenticate(handler: StreamRequestHandler):
     if (debug):
         print("Keytype")
         print(keytype)
-        print("UID")
-        print(''.join('{:02x}'.format(x) for x in UID))
-        print("AppId")
-        print(''.join('{:02x}'.format(x) for x in appId))
-        print("Key:")
-        print(''.join('{:02x}'.format(x) for x in key))
-        print("RndB")
-        print(''.join('{:02x}'.format(x) for x in RndB))
-        print("ekRndB")
-        print(''.join('{:02x}'.format(x) for x in ekRndB))
-        print("RndA")
-        print(''.join('{:02x}'.format(x) for x in RndA))
-        print("ekRndARndBPrime")
-        print(''.join('{:02x}'.format(x) for x in ekRndARndBPrime))
-        print("ekRndAPrime")
-        print(''.join('{:02x}'.format(x) for x in ekRndAPrime))
-        print("ekRndAPrime")
-        print(''.join('{:02x}'.format(x) for x in RndAPrime))
+        logBytes("UID", uid)
+        logBytes("AppId", appId)
+        logBytes("Key:", key)
+        logBytes("RndB", RndB)
+        logBytes("ekRndB", ekRndB)
+        logBytes("RndA", RndA)
+        logBytes("ekRndARndBPrime", ekRndARndBPrime)
+        logBytes("ekRndAPrime", ekRndAPrime)
 
     if (RndAPrime == RndAPrime2):
         print("Authenticated succesfully")
@@ -401,25 +405,40 @@ def authenticate(handler: StreamRequestHandler):
             if (key[0:8] == key[8:16]):
                 SessionKey = RndA[0:4] + RndB[0:4] + RndA[0:4] + RndB[0:4]
         elif keytype == KEYTYPE_3K3DES:
-            SessionKey = RndA[0:4] + RndB[0:4] + RndA[6:10] + RndB[6:10] + RndA[12:16] + RndB[12:16]
+            SessionKey = (
+                RndA[0:4] + RndB[0:4] + RndA[6:10] +
+                RndB[6:10] + RndA[12:16] + RndB[12:16]
+            )
         elif keytype == KEYTYPE_AES:
             SessionKey = RndA[0:4] + RndB[0:4] + RndA[12:16] + RndB[12:16]
         openDoor()
-        sessionKeys[UID] = (keytype, SessionKey)
+        sessionKeys[uid] = (keytype, SessionKey)
         if (debug):
-            print("Session Key")
-            print(''.join('{:02x}'.format(x) for x in SessionKey))
+            logBytes("Session Key", SessionKey)
 
     else:
         print("Authenticaten failed")
 
+
 def openDoor():
     pass
+
+
+def logBytes(name: str, b: bytes):
+    print(name)
+    print(toHexString(b))
+
+
+def toHexString(b: bytes) -> str:
+    return ''.join('{:02x}'.format(x) for x in b)
+
 
 if __name__ == '__main__':
     webServer = ThreadingTCPServer(("", PORT), ConnectionHandler)
     print("Started")
     zc = Zeroconf()
     ipAdressAsByte = bytes([int(p) for p in LOCAL_IP.split(".")])
-    zc.register_service(ServiceInfo("_homekeypro._tcp.local.","dooropener._homekeypro._tcp.local.",PORT,addresses=[ipAdressAsByte]))
+    zc.register_service(ServiceInfo(
+        "_homekeypro._tcp.local.", "dooropener._homekeypro._tcp.local.", PORT, addresses=[ipAdressAsByte]
+    ))
     webServer.serve_forever()
