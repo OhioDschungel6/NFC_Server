@@ -171,7 +171,7 @@ def verifyAndroid(handler: StreamRequestHandler):
     row = data.fetchone()
     connection.commit()
     connection.close()
-    if (row is None):
+    if row is None:
         print("Key does not exist.")
         return
 
@@ -296,7 +296,7 @@ def getAppId(handler: StreamRequestHandler):
 
     row = data.fetchone()
 
-    if (row is None):
+    if row is None:
         appId = bytes(3)
     else:
         appId = row[0]
@@ -312,7 +312,7 @@ def isKeyKnown(handler: StreamRequestHandler):
     data = connection.execute("Select uid from MasterKeys where uid=?", (uid,))
 
     row = data.fetchone()
-    if (row is None):
+    if row is None:
         handler.wfile.write(bytes([0]))
     else:
         handler.wfile.write(bytes([1]))
@@ -337,7 +337,7 @@ def authenticate(handler: StreamRequestHandler):
             "Select key from AppKeys where uid=?", (uid,)
         )
     row = data.fetchone()
-    if (row is None):
+    if row is None:
         key = DEFAULT_KEY[0:KEYLENGTH[keytype]]
     else:
         key = row[0][0:KEYLENGTH[keytype]]
@@ -354,7 +354,7 @@ def authenticate(handler: StreamRequestHandler):
 
     ekRndB = handler.rfile.read(rndSize)  # ek(RndB)
     RndA = get_random_bytes(rndSize)
-    if (unitTest):
+    if unitTest:
         RndA = TESTDATA[keytype]
     RndB = bytearray(decryptor.decrypt(ekRndB))
     RndBPrime = RndB[1:rndSize] + RndB[0:1]
@@ -386,7 +386,7 @@ def authenticate(handler: StreamRequestHandler):
     RndAPrime = decryptor.decrypt(ekRndAPrime)
     RndAPrime2 = RndA[1:rndSize] + RndA[0:1]
 
-    if (debug):
+    if debug:
         print("Keytype")
         print(keytype)
         logBytes("UID", uid)
@@ -398,11 +398,11 @@ def authenticate(handler: StreamRequestHandler):
         logBytes("ekRndARndBPrime", ekRndARndBPrime)
         logBytes("ekRndAPrime", ekRndAPrime)
 
-    if (RndAPrime == RndAPrime2):
+    if RndAPrime == RndAPrime2:
         print("Authenticated succesfully")
         if keytype == KEYTYPE_2K3DES:
             SessionKey = RndA[0:4] + RndB[0:4] + RndA[4:8] + RndB[4:8]
-            if (key[0:8] == key[8:16]):
+            if key[0:8] == key[8:16]:
                 SessionKey = RndA[0:4] + RndB[0:4] + RndA[0:4] + RndB[0:4]
         elif keytype == KEYTYPE_3K3DES:
             SessionKey = (
@@ -413,7 +413,7 @@ def authenticate(handler: StreamRequestHandler):
             SessionKey = RndA[0:4] + RndB[0:4] + RndA[12:16] + RndB[12:16]
         openDoor()
         sessionKeys[uid] = (keytype, SessionKey)
-        if (debug):
+        if debug:
             logBytes("Session Key", SessionKey)
 
     else:
