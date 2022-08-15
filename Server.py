@@ -11,6 +11,7 @@ from Crypto.Random import get_random_bytes
 import sqlite3
 import zlib
 import json
+from os import path
 import socket
 from zeroconf import Zeroconf, ServiceInfo
 
@@ -75,6 +76,7 @@ class ConnectionHandler(StreamRequestHandler):
             0x6D: ("Get all devices", getAllDevices),
             0xDD: ("Delete device", deleteKey),
             0x66: ("Is key known", isKeyKnown),
+            0xA6: ("Is android known", isAndroidDeviceKnown),
         }
         name, fn = commands[mode]
         print(name)
@@ -319,6 +321,20 @@ def isKeyKnown(handler: StreamRequestHandler):
 
     handler.wfile.flush()
 
+def isAndroidDeviceKnown(handler: StreamRequestHandler):
+    uid = handler.rfile.read(16)
+
+    # Fetch Ids from database
+    connection = sqlite3.connect("keys.sqlite")
+    data = connection.execute("Select uid from AndroidKeys where uid=?", (uid,))
+
+    row = data.fetchone()
+    if row is None:
+        handler.wfile.write(bytes([0]))
+    else:
+        handler.wfile.write(bytes([1]))
+
+    handler.wfile.flush()
 
 def authenticate(handler: StreamRequestHandler):
     # Step 0: Get ID
@@ -432,8 +448,19 @@ def logBytes(name: str, b: bytes):
 def toHexString(b: bytes) -> str:
     return ''.join('{:02x}'.format(x) for x in b)
 
+def readConf():
+    global PORT
+    global PRESHARED_KEY
+    with open(path.join(path.dirname(__file__), "config.json")) as file:
+        config = json.loads(file.read())
+    PORT = config.get("Doorserver",{}).get("port",80)
+    # PRESHARED_KEY = bytes.fromhex(config["secretkey"])
+    # if len(PRESHARED_KEY) != 16:
+    #     raise ValueError("Hexkey has to be 16 bytes long")
+
 
 if __name__ == '__main__':
+    readConf()
     webServer = ThreadingTCPServer(("", PORT), ConnectionHandler)
     print("Started")
     zc = Zeroconf()
