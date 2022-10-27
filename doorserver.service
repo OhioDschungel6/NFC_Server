@@ -1,0 +1,9 @@
+[Unit]
+Description=Server for home-key-pro
+
+[Service]
+ExecStart=/usr/bin/python3 /home/doorserver/NFC_Server/Server.py
+User=doorserver
+
+[Install]
+WantedBy=multi-user.target

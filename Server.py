@@ -454,6 +454,8 @@ def readConf():
     with open(path.join(path.dirname(__file__), "config.json")) as file:
         config = json.loads(file.read())
     PORT = config.get("Doorserver",{}).get("port",80)
+    if "" == PORT:
+        PORT = 80
     # PRESHARED_KEY = bytes.fromhex(config["secretkey"])
     # if len(PRESHARED_KEY) != 16:
     #     raise ValueError("Hexkey has to be 16 bytes long")
