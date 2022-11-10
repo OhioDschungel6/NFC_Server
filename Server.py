@@ -64,6 +64,9 @@ unitTest = False
 debug = False
 
 
+
+
+
 class ConnectionHandler(StreamRequestHandler):
     def handle(self: StreamRequestHandler):
         mode = self.rfile.read(1)[0]
@@ -461,13 +464,21 @@ def readConf():
     #     raise ValueError("Hexkey has to be 16 bytes long")
 
 
+def getIPAdress():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.connect(("8.8.8.8", 80))
+    ip = s.getsockname()[0]
+    s.close()
+    return ip
+
+
 if __name__ == '__main__':
     readConf()
     webServer = ThreadingTCPServer(("", PORT), ConnectionHandler)
     print("Started")
     zc = Zeroconf()
-    print(LOCAL_IPs)
-    ipAdressAsByte = bytes([int(p) for p in LOCAL_IPs[0].split(".")])
+    localIp = getIPAdress()
+    ipAdressAsByte = bytes([int(p) for p in localIp.split(".")])
     zc.register_service(ServiceInfo(
         "_homekeypro._tcp.local.", "dooropener._homekeypro._tcp.local.", PORT, addresses=[ipAdressAsByte]
     ))
