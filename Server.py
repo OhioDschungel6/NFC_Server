@@ -15,7 +15,7 @@ from os import path
 import socket
 from zeroconf import Zeroconf, ServiceInfo
 
-LOCAL_IP = socket.gethostbyname(socket.gethostname())
+LOCAL_IPs = socket.gethostbyname_ex(socket.gethostname())
 PRESHARED_KEY = "secretKey1234567"
 PORT = 80
 
@@ -466,7 +466,8 @@ if __name__ == '__main__':
     webServer = ThreadingTCPServer(("", PORT), ConnectionHandler)
     print("Started")
     zc = Zeroconf()
-    ipAdressAsByte = bytes([int(p) for p in LOCAL_IP.split(".")])
+    print(LOCAL_IPs)
+    ipAdressAsByte = bytes([int(p) for p in LOCAL_IPs[0].split(".")])
     zc.register_service(ServiceInfo(
         "_homekeypro._tcp.local.", "dooropener._homekeypro._tcp.local.", PORT, addresses=[ipAdressAsByte]
     ))
