@@ -3,6 +3,7 @@ sudo passwd doorserver
 cd /home/doorserver #change directory
 sudo apt-get install git
 git clone https://github.com/OhioDschungel6/NFC_Server.git
+chmod -R doorserver:doorserver NFC_Server
 cd NFC_Server
 sudo adduser doorserver gpio
 sudo apt-get install pip
