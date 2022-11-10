@@ -11,6 +11,6 @@ virtualenv -p python3 doorEnvironment
 source doorEnvironment/bin/activate
 pip install -r requirements.txt
 
-cp ./doorserver.service /etc/systemd/system/doorserver.service
+sudo cp ./doorserver.service /etc/systemd/system/doorserver.service
 sudo systemctl start doorserver    # Runs the script now
 sudo systemctl enable doorserver #Adds the script as service

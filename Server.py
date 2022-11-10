@@ -453,7 +453,7 @@ def readConf():
     global PRESHARED_KEY
     with open(path.join(path.dirname(__file__), "config.json")) as file:
         config = json.loads(file.read())
-    PORT = config.get("Doorserver",{}).get("port",80)
+    PORT = int(config.get("Doorserver",{}).get("port",80))
     if "" == PORT:
         PORT = 80
     # PRESHARED_KEY = bytes.fromhex(config["secretkey"])

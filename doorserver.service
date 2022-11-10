@@ -1,5 +1,6 @@
 [Unit]
 Description=Server for home-key-pro
+After=network-online.target
 
 [Service]
 ExecStart=/usr/bin/bash /home/doorserver/NFC_Server/startDoorServer.sh

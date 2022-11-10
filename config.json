@@ -2,7 +2,7 @@
   "secretkey": "",
   "Doorserver" : {
     "ip": "",
-    "port": ""
+    "port": "42069"
   },
   "Wifi": {
     "ssid":"",
