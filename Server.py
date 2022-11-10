@@ -1,7 +1,11 @@
 import hashlib
 import hmac
+import io
 import threading
+from io import BytesIO
 from socketserver import ThreadingTCPServer, StreamRequestHandler, TCPServer
+from typing import AnyStr
+
 from Crypto.Cipher import DES3
 from Crypto.Cipher import AES
 from Crypto.Hash import SHA256
@@ -15,7 +19,7 @@ from os import path
 import socket
 from zeroconf import Zeroconf, ServiceInfo
 
-LOCAL_IPs = socket.gethostbyname_ex(socket.gethostname())
+KEY_DATABASE = "keys.sqlite"
 PRESHARED_KEY = "secretKey1234567"
 PORT = 80
 
@@ -87,48 +91,41 @@ class ConnectionHandler(StreamRequestHandler):
 
 
 def deleteKey(handler: StreamRequestHandler):
-    nonce = get_random_bytes(16)
-    encryptor = AES.new(bytes(PRESHARED_KEY, 'utf-8'), AES.MODE_CBC, bytes(16))
-    ekNonce = encryptor.encrypt(nonce)
-    handler.wfile.write(ekNonce)
-    msg = handler.rfile.read(32)
-    decryptor = AES.new(bytes(PRESHARED_KEY, 'utf-8'), AES.MODE_CBC, bytes(16))
-    msgDecrypted = decryptor.decrypt(msg)
-    uid = msgDecrypted[16:32]
-    nonceShifted = msgDecrypted[0:16]
-    nonceUnShifted = nonceShifted[1:16] + nonceShifted[0:1]
-    if(debug):
-        logBytes("nonce", nonce)
-        logBytes("ekNonce", ekNonce)
-        logBytes("msg", msg)
-        logBytes("msgDecrypted", msgDecrypted)
-
-    if(nonce != nonceUnShifted):
-        print("Unauthentic try to delete key")
-        return
-    connection = sqlite3.connect("keys.sqlite")
+    msg = readstreamAndVerifyHMAC(handler)
+    uid = msg.read(16)
+    connection = sqlite3.connect(KEY_DATABASE)
     connection.execute("delete from AndroidKeys where uid = (?)", (uid,))
     connection.execute("delete from AppKeys where uid = (?)", (uid,))
     connection.commit()
     connection.close()
 
 
-def safePublicKey(handler: StreamRequestHandler):
-    print("Safe public key")
-    uid = handler.rfile.read(16)
-    nameLength = handler.rfile.read(1)[0]
-    name = handler.rfile.read(nameLength)
-    keyLength = handler.rfile.read(1)[0]
-    publicKey = handler.rfile.read(keyLength)
+def readstreamAndVerifyHMAC(handler:StreamRequestHandler) -> BytesIO:
+    nonce = get_random_bytes(32)
+    handler.wfile.write(nonce)
+    length = int.from_bytes(handler.rfile.read(4),"little")
+    msg = handler.rfile.read(length)
     hmacWriter = handler.rfile.read(32)
     hmacServer = hmac.new(
-        bytes(PRESHARED_KEY, 'utf-8'), publicKey, hashlib.sha256
+        bytes(PRESHARED_KEY, 'utf-8'), msg+nonce, hashlib.sha256
     )
     hmacSame = hmac.compare_digest(hmacServer.digest(), hmacWriter)
     if(not hmacSame):
         print("Non authentic try to write public key")
-        return
-    connection = sqlite3.connect("keys.sqlite")
+        raise PermissionError
+    return io.BytesIO(msg)
+
+
+
+def safePublicKey(handler: StreamRequestHandler):
+    print("Safe public key")
+    msg = readstreamAndVerifyHMAC(handler)
+    uid = msg.read(16)
+    nameLength = msg.read(1)[0]
+    name = msg.read(nameLength)
+    keyLength = msg.read(1)[0]
+    publicKey = msg.read(keyLength)
+    connection = sqlite3.connect(KEY_DATABASE)
     connection.execute(
         "insert or replace into AndroidKeys (uid, publicKey,name) values (?,?,?)",
         (uid, publicKey, name)
@@ -141,7 +138,7 @@ def safePublicKey(handler: StreamRequestHandler):
 
 
 def getAllDevices(handler: StreamRequestHandler):
-    connection = sqlite3.connect("keys.sqlite")
+    connection = sqlite3.connect(KEY_DATABASE)
     androidData = connection.execute("Select uid,name from AndroidKeys")
     desfireData = connection.execute("Select uid,name from AppKeys")
 
@@ -169,7 +166,7 @@ def verifyAndroid(handler: StreamRequestHandler):
     uid = handler.rfile.read(16)
     dataToSign = get_random_bytes(16)
     handler.wfile.write(dataToSign)
-    connection = sqlite3.connect("keys.sqlite")
+    connection = sqlite3.connect(KEY_DATABASE)
     data = connection.execute(
         "Select publicKey from AndroidKeys where uid=?", (uid,)
     )
@@ -203,11 +200,12 @@ def verifyAndroid(handler: StreamRequestHandler):
 
 
 def changeKey(handler: StreamRequestHandler):
-    keytype = handler.rfile.read(1)[0]
-    uid = handler.rfile.read(7)
-    appId = handler.rfile.read(3)
-    nameLength = handler.rfile.read(1)[0]
-    name = handler.rfile.read(nameLength)
+    msg = readstreamAndVerifyHMAC(handler)
+    keytype = msg.read(1)[0]
+    uid = msg.read(7)
+    appId = msg.read(3)
+    nameLength = msg.read(1)[0]
+    name = msg.read(nameLength)
     if uid not in sessionKeys:
         return
     if keytype not in KEYLENGTH:
@@ -222,6 +220,7 @@ def changeKey(handler: StreamRequestHandler):
     key = get_random_bytes(keylength)
     # key = bytearray([0x00 ,0x10 ,0x20 ,0x30 ,0x40 ,0x50 ,0x60 ,0x70 ,0x80 ,0x90 ,0xA0 ,0xB0 ,0xB0 ,0xA0 ,0x90 ,0x80])
     if appId == bytes(3):
+        # masterkey
         # TODO set to not zero
         keyNr |= keytype
         key = bytes(keylength)
@@ -273,10 +272,10 @@ def changeKey(handler: StreamRequestHandler):
     handler.wfile.write(bytes(msg))
     handler.wfile.flush()
 
-    statusCode = handler.rfile.read(1)[0]
+    statusCode = readstreamAndVerifyHMAC(handler).read(1)[0]
     if statusCode == 0:
         # Write key to database
-        connection = sqlite3.connect("keys.sqlite")
+        connection = sqlite3.connect(KEY_DATABASE)
         if appId == bytes(3):
             connection.execute(
                 "insert or replace into MasterKeys (uid, keytype, key) values (?,?,?)",
@@ -296,7 +295,7 @@ def getAppId(handler: StreamRequestHandler):
     uid = handler.rfile.read(7)
 
     # Fetch Ids from database
-    connection = sqlite3.connect("keys.sqlite")
+    connection = sqlite3.connect(KEY_DATABASE)
     data = connection.execute("Select appId from AppKeys where uid=?", (uid,))
 
     row = data.fetchone()
@@ -313,7 +312,7 @@ def isKeyKnown(handler: StreamRequestHandler):
     uid = handler.rfile.read(7)
 
     # Fetch Ids from database
-    connection = sqlite3.connect("keys.sqlite")
+    connection = sqlite3.connect(KEY_DATABASE)
     data = connection.execute("Select uid from MasterKeys where uid=?", (uid,))
 
     row = data.fetchone()
@@ -328,7 +327,7 @@ def isAndroidDeviceKnown(handler: StreamRequestHandler):
     uid = handler.rfile.read(16)
 
     # Fetch Ids from database
-    connection = sqlite3.connect("keys.sqlite")
+    connection = sqlite3.connect(KEY_DATABASE)
     data = connection.execute("Select uid from AndroidKeys where uid=?", (uid,))
 
     row = data.fetchone()
@@ -346,7 +345,7 @@ def authenticate(handler: StreamRequestHandler):
     appId = handler.rfile.read(3)
 
     # Fetch key from database
-    connection = sqlite3.connect("keys.sqlite")
+    connection = sqlite3.connect(KEY_DATABASE)
     if appId == bytes(3):
         data = connection.execute(
             "Select key from MasterKeys where uid=?", (uid,)
