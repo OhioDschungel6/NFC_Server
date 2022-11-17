@@ -16,6 +16,13 @@ import json
 from os import path
 import socket
 from zeroconf import Zeroconf, ServiceInfo
+import RPi.GPIO as GPIO
+
+GPIO_PIN = 2
+
+GPIO.setmode(GPIO.BCM)
+#The current pin is pin nr 3 (GPIO2)
+GPIO.setup(GPIO_PIN, GPIO.OUT)
 
 KEY_DATABASE = "keys.sqlite"
 PRESHARED_KEY = "secretKey1234567"
@@ -443,8 +450,11 @@ def authenticate(handler: StreamRequestHandler):
         print("Authenticaten failed")
 
 
+ledState = False
 def openDoor():
-    pass
+    global ledState
+    ledState = not ledState
+    GPIO.output(GPIO_PIN,ledState)
 
 
 def logBytes(name: str, b: bytes):
