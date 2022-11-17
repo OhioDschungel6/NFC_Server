@@ -1,10 +1,8 @@
 import hashlib
 import hmac
 import io
-import threading
 from io import BytesIO
 from socketserver import ThreadingTCPServer, StreamRequestHandler, TCPServer
-from typing import AnyStr
 
 from Crypto.Cipher import DES3
 from Crypto.Cipher import AES
@@ -79,7 +77,7 @@ class ConnectionHandler(StreamRequestHandler):
             0xAA: ("Authenticate", authenticate),
             0x6A: ("GetAppId", getAppId),
             0x4A: ("Verify android", verifyAndroid),
-            0x56: ("Save public key", safePublicKey),
+            0x56: ("Save public key", savePublicKey),
             0x6D: ("Get all devices", getAllDevices),
             0xDD: ("Delete device", deleteKey),
             0x66: ("Is key known", isKeyKnown),
@@ -93,9 +91,11 @@ class ConnectionHandler(StreamRequestHandler):
 def deleteKey(handler: StreamRequestHandler):
     msg = readstreamAndVerifyHMAC(handler)
     uid = msg.read(16)
+    if(debug):
+        logBytes("uid",uid)
     connection = sqlite3.connect(KEY_DATABASE)
     connection.execute("delete from AndroidKeys where uid = (?)", (uid,))
-    connection.execute("delete from AppKeys where uid = (?)", (uid,))
+    connection.execute("delete from AppKeys where uid = (?)", (uid[0:7],))
     connection.commit()
     connection.close()
 
@@ -109,6 +109,11 @@ def readstreamAndVerifyHMAC(handler:StreamRequestHandler) -> BytesIO:
     hmacServer = hmac.new(
         bytes(PRESHARED_KEY, 'utf-8'), msg+nonce, hashlib.sha256
     )
+    if(debug):
+        logBytes("Nonce",nonce)
+        print("length", length)
+        logBytes("msg",msg)
+        logBytes("hmacWriter",hmacWriter)
     hmacSame = hmac.compare_digest(hmacServer.digest(), hmacWriter)
     if(not hmacSame):
         print("Non authentic try to write public key")
@@ -117,8 +122,8 @@ def readstreamAndVerifyHMAC(handler:StreamRequestHandler) -> BytesIO:
 
 
 
-def safePublicKey(handler: StreamRequestHandler):
-    print("Safe public key")
+def savePublicKey(handler: StreamRequestHandler):
+    print("Save public key")
     msg = readstreamAndVerifyHMAC(handler)
     uid = msg.read(16)
     nameLength = msg.read(1)[0]
