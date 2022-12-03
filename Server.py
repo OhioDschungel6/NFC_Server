@@ -17,6 +17,7 @@ from os import path
 import socket
 from zeroconf import Zeroconf, ServiceInfo
 import RPi.GPIO as GPIO
+import sched, time
 
 GPIO_PIN = 2
 
@@ -451,11 +452,17 @@ def authenticate(handler: StreamRequestHandler):
         print("Authenticaten failed")
 
 
-ledState = False
+scheduler = sched.scheduler(time.time, time.sleep)
+# ledState = False
 def openDoor():
-    global ledState
-    ledState = not ledState
-    GPIO.output(GPIO_PIN,ledState)
+    # global ledState
+    # ledState = not ledState
+    # GPIO.output(GPIO_PIN,ledState)
+    for event in scheduler.queue:
+        scheduler.cancel(event)
+    GPIO.output(GPIO_PIN,True)
+    scheduler.enter(5,1,lambda: GPIO.output(GPIO_PIN,False))
+    scheduler.run()
 
 
 def logBytes(name: str, b: bytes):
