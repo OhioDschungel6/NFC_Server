@@ -23,6 +23,7 @@ GPIO_PIN = 2
 GPIO.setmode(GPIO.BCM)
 #The current pin is pin nr 3 (GPIO2)
 GPIO.setup(GPIO_PIN, GPIO.OUT)
+GPIO.output(GPIO_PIN,False)
 
 KEY_DATABASE = "keys.sqlite"
 PRESHARED_KEY = "secretKey1234567"
