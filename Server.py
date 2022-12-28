@@ -19,6 +19,7 @@ from zeroconf import Zeroconf, ServiceInfo
 import RPi.GPIO as GPIO
 import sched
 import time
+from expiringdict import ExpiringDict
 
 GPIO_PIN = 2
 
@@ -70,7 +71,7 @@ TESTDATA = {
     ])
 }
 
-sessionKeys = {}
+sessionKeys = ExpiringDict(max_len=None, max_age_seconds=5 * 60)
 
 unitTest = False
 debug = False
