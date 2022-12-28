@@ -207,8 +207,10 @@ def verifyAndroid(handler: StreamRequestHandler):
         verifier.verify(hashedDataToSign, bytes(signedData))
         print("Android auth succesful.")
         openDoor()
+        handler.wfile.write(bytes([0x00]))
     except ValueError:
         print("Android auth failed.")
+        handler.wfile.write(bytes([0xAE]))
 
 
 def changeKey(handler: StreamRequestHandler):
