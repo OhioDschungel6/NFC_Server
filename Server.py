@@ -17,14 +17,15 @@ from os import path
 import socket
 from zeroconf import Zeroconf, ServiceInfo
 import RPi.GPIO as GPIO
-import sched, time
+import sched
+import time
 
 GPIO_PIN = 2
 
 GPIO.setmode(GPIO.BCM)
-#The current pin is pin nr 3 (GPIO2)
+# The current pin is pin nr 3 (GPIO2)
 GPIO.setup(GPIO_PIN, GPIO.OUT)
-GPIO.output(GPIO_PIN,False)
+GPIO.output(GPIO_PIN, False)
 
 KEY_DATABASE = "keys.sqlite"
 PRESHARED_KEY = "secretKey1234567"
@@ -75,9 +76,6 @@ unitTest = False
 debug = False
 
 
-
-
-
 class ConnectionHandler(StreamRequestHandler):
     def handle(self: StreamRequestHandler):
         mode = self.rfile.read(1)[0]
@@ -102,7 +100,7 @@ def deleteKey(handler: StreamRequestHandler):
     msg = readstreamAndVerifyHMAC(handler)
     uid = msg.read(16)
     if(debug):
-        logBytes("uid",uid)
+        logBytes("uid", uid)
     connection = sqlite3.connect(KEY_DATABASE)
     connection.execute("delete from AndroidKeys where uid = (?)", (uid,))
     connection.execute("delete from AppKeys where uid = (?)", (uid[0:7],))
@@ -110,26 +108,25 @@ def deleteKey(handler: StreamRequestHandler):
     connection.close()
 
 
-def readstreamAndVerifyHMAC(handler:StreamRequestHandler) -> BytesIO:
+def readstreamAndVerifyHMAC(handler: StreamRequestHandler) -> BytesIO:
     nonce = get_random_bytes(32)
     handler.wfile.write(nonce)
-    length = int.from_bytes(handler.rfile.read(4),"little")
+    length = int.from_bytes(handler.rfile.read(4), "little")
     msg = handler.rfile.read(length)
     hmacWriter = handler.rfile.read(32)
     hmacServer = hmac.new(
-        bytes(PRESHARED_KEY, 'utf-8'), msg+nonce, hashlib.sha256
+        bytes(PRESHARED_KEY, 'utf-8'), msg + nonce, hashlib.sha256
     )
     if(debug):
-        logBytes("Nonce",nonce)
+        logBytes("Nonce", nonce)
         print("length", length)
-        logBytes("msg",msg)
-        logBytes("hmacWriter",hmacWriter)
+        logBytes("msg", msg)
+        logBytes("hmacWriter", hmacWriter)
     hmacSame = hmac.compare_digest(hmacServer.digest(), hmacWriter)
     if(not hmacSame):
         print("Non authentic try to write public key")
         raise PermissionError
     return io.BytesIO(msg)
-
 
 
 def savePublicKey(handler: StreamRequestHandler):
@@ -338,12 +335,14 @@ def isKeyKnown(handler: StreamRequestHandler):
 
     handler.wfile.flush()
 
+
 def isAndroidDeviceKnown(handler: StreamRequestHandler):
     uid = handler.rfile.read(16)
 
     # Fetch Ids from database
     connection = sqlite3.connect(KEY_DATABASE)
-    data = connection.execute("Select uid from AndroidKeys where uid=?", (uid,))
+    data = connection.execute(
+        "Select uid from AndroidKeys where uid=?", (uid,))
 
     row = data.fetchone()
     if row is None:
@@ -352,6 +351,7 @@ def isAndroidDeviceKnown(handler: StreamRequestHandler):
         handler.wfile.write(bytes([1]))
 
     handler.wfile.flush()
+
 
 def authenticate(handler: StreamRequestHandler, withOpenDoor=False):
     # Step 0: Get ID
@@ -449,21 +449,27 @@ def authenticate(handler: StreamRequestHandler, withOpenDoor=False):
         sessionKeys[uid] = (keytype, SessionKey)
         if debug:
             logBytes("Session Key", SessionKey)
+        handler.wfile.write(bytes([0x00]))
+        handler.wfile.flush()
 
     else:
         print("Authenticaten failed")
+        handler.wfile.write(bytes([0xAE]))
+        handler.wfile.flush()
 
 
 scheduler = sched.scheduler(time.time, time.sleep)
 # ledState = False
+
+
 def openDoor():
     # global ledState
     # ledState = not ledState
     # GPIO.output(GPIO_PIN,ledState)
     for event in scheduler.queue:
         scheduler.cancel(event)
-    GPIO.output(GPIO_PIN,True)
-    scheduler.enter(5,1,lambda: GPIO.output(GPIO_PIN,False))
+    GPIO.output(GPIO_PIN, True)
+    scheduler.enter(5, 1, lambda: GPIO.output(GPIO_PIN, False))
     scheduler.run()
 
 
@@ -475,12 +481,13 @@ def logBytes(name: str, b: bytes):
 def toHexString(b: bytes) -> str:
     return ''.join('{:02x}'.format(x) for x in b)
 
+
 def readConf():
     global PORT
     global PRESHARED_KEY
     with open(path.join(path.dirname(__file__), "config.json")) as file:
         config = json.loads(file.read())
-    PORT = int(config.get("Doorserver",{}).get("port",80))
+    PORT = int(config.get("Doorserver", {}).get("port", 80))
     if "" == PORT:
         PORT = 80
     # PRESHARED_KEY = bytes.fromhex(config["secretkey"])
