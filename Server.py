@@ -87,7 +87,7 @@ class ConnectionHandler(StreamRequestHandler):
             0x4A: ("Verify android", verifyAndroid),
             0x56: ("Save public key", savePublicKey),
             0x6D: ("Get all devices", getAllDevices),
-            0xDD: ("Delete device", deleteKey),
+            0xDD: ("Delete device", deleteDevice),
             0x66: ("Is key known", isKeyKnown),
             0xA6: ("Is android known", isAndroidDeviceKnown),
         }
@@ -96,16 +96,22 @@ class ConnectionHandler(StreamRequestHandler):
         fn(self)
 
 
-def deleteKey(handler: StreamRequestHandler):
+def deleteDevice(handler: StreamRequestHandler):
     msg = readstreamAndVerifyHMAC(handler)
     uid = msg.read(16)
     if(debug):
         logBytes("uid", uid)
     connection = sqlite3.connect(KEY_DATABASE)
-    connection.execute("delete from AndroidKeys where uid = (?)", (uid,))
-    connection.execute("delete from AppKeys where uid = (?)", (uid[0:7],))
+    cursor = connection.execute(
+        "delete from AndroidKeys where uid = (?)", (uid,))
+    if cursor.rowcount == 0:
+        cursor = connection.execute(
+            "delete from AppKeys where uid = (?)", (uid[0:7],))
     connection.commit()
     connection.close()
+
+    response = 0 if cursor.rowcount > 0 else 0x5E
+    handler.wfile.write(bytes([response]))
 
 
 def readstreamAndVerifyHMAC(handler: StreamRequestHandler) -> BytesIO:
@@ -138,12 +144,15 @@ def savePublicKey(handler: StreamRequestHandler):
     keyLength = msg.read(1)[0]
     publicKey = msg.read(keyLength)
     connection = sqlite3.connect(KEY_DATABASE)
-    connection.execute(
+    cursor = connection.execute(
         "insert or replace into AndroidKeys (uid, publicKey,name) values (?,?,?)",
         (uid, publicKey, name)
     )
     connection.commit()
     connection.close()
+
+    response = 0 if cursor.rowcount > 0 else 0x5E
+    handler.wfile.write(bytes([response]))
     if(debug):
         logBytes("ID", uid)
         logBytes("PK", publicKey)
@@ -291,17 +300,20 @@ def changeKey(handler: StreamRequestHandler):
         # Write key to database
         connection = sqlite3.connect(KEY_DATABASE)
         if appId == bytes(3):
-            connection.execute(
+            cursor = connection.execute(
                 "insert or replace into MasterKeys (uid, keytype, key) values (?,?,?)",
                 (uid, keytype, key)
             )
         else:
-            connection.execute(
+            cursor = connection.execute(
                 "insert or replace into AppKeys (uid, keytype, key, appId, name) values (?,?,?,?,?)",
                 (uid, keytype, key, appId, name)
             )
         connection.commit()
         connection.close()
+
+        response = 0 if cursor.rowcount > 0 else 0x5E
+        handler.wfile.write(bytes([response]))
         print("Change key succesful")
 
 
