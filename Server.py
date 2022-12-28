@@ -84,6 +84,7 @@ class ConnectionHandler(StreamRequestHandler):
         commands = {
             0xC4: ("Change key", changeKey),
             0xAA: ("Authenticate", authenticate),
+            0x0D: ("Open Door", lambda handler: authenticate(handler, True)),
             0x6A: ("GetAppId", getAppId),
             0x4A: ("Verify android", verifyAndroid),
             0x56: ("Save public key", savePublicKey),
@@ -352,7 +353,7 @@ def isAndroidDeviceKnown(handler: StreamRequestHandler):
 
     handler.wfile.flush()
 
-def authenticate(handler: StreamRequestHandler):
+def authenticate(handler: StreamRequestHandler, withOpenDoor=False):
     # Step 0: Get ID
     keytype = handler.rfile.read(1)[0]
     uid = handler.rfile.read(7)
@@ -443,7 +444,8 @@ def authenticate(handler: StreamRequestHandler):
             )
         elif keytype == KEYTYPE_AES:
             SessionKey = RndA[0:4] + RndB[0:4] + RndA[12:16] + RndB[12:16]
-        openDoor()
+        if withOpenDoor:
+            openDoor()
         sessionKeys[uid] = (keytype, SessionKey)
         if debug:
             logBytes("Session Key", SessionKey)
