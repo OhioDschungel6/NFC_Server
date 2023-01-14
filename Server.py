@@ -505,9 +505,9 @@ def readConf():
     PORT = int(config.get("Doorserver", {}).get("port", 80))
     if "" == PORT:
         PORT = 80
-    # PRESHARED_KEY = bytes.fromhex(config["secretkey"])
-    # if len(PRESHARED_KEY) != 16:
-    #     raise ValueError("Hexkey has to be 16 bytes long")
+    PRESHARED_KEY = bytes.fromhex(config["secretkey"])
+    if len(PRESHARED_KEY) != 16:
+        raise ValueError("Hexkey has to be 16 bytes long")
 
 
 def getIPAdress():
