@@ -71,7 +71,7 @@ TESTDATA = {
     ])
 }
 
-sessionKeys = ExpiringDict(max_len=None, max_age_seconds=5 * 60)
+sessionKeys = ExpiringDict(max_len=100,max_age_seconds=5 * 60)
 
 unitTest = False
 debug = False
@@ -481,6 +481,7 @@ def openDoor():
     # global ledState
     # ledState = not ledState
     # GPIO.output(GPIO_PIN,ledState)
+
     for event in scheduler.queue:
         scheduler.cancel(event)
     GPIO.output(GPIO_PIN, True)

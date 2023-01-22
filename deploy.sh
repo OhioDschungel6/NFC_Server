@@ -9,14 +9,15 @@ pip install virtualenv
 sudo su doorserver
 
 cd /home/doorserver #change directory
-#sudo chown -R doorserver:doorserver NFC_Server
 git clone https://github.com/OhioDschungel6/NFC_Server.git
 cd NFC_Server
 
-virtualenv -p python3 doorEnvironment
+virtualenv -p python3 doorEnvironment --system-site-packages
 source doorEnvironment/bin/activate
 pip install -r requirements.txt
 exit
+
+#Edit config.json to add secretkey
 
 cd /home/doorserver/NFC_Server
 sudo cp ./doorserver.service /etc/systemd/system/doorserver.service
