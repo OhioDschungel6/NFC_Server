@@ -29,7 +29,7 @@ GPIO.setup(GPIO_PIN, GPIO.OUT)
 GPIO.output(GPIO_PIN, False)
 
 KEY_DATABASE = "keys.sqlite"
-PRESHARED_KEY = "secretKey1234567"
+PRESHARED_KEY = bytes(16)
 PORT = 80
 
 DEFAULT_KEY = bytearray([
@@ -122,7 +122,7 @@ def readstreamAndVerifyHMAC(handler: StreamRequestHandler) -> BytesIO:
     msg = handler.rfile.read(length)
     hmacWriter = handler.rfile.read(32)
     hmacServer = hmac.new(
-        bytes(PRESHARED_KEY, 'utf-8'), msg + nonce, hashlib.sha256
+        PRESHARED_KEY, msg + nonce, hashlib.sha256
     )
     if(debug):
         logBytes("Nonce", nonce)
@@ -285,7 +285,7 @@ def changeKey(handler: StreamRequestHandler):
         encDataframe = encDataframe + bytes(16 - (len(encDataframe) % 16))
 
     sharedKeyEncryptor = AES.new(
-        bytes(PRESHARED_KEY, 'utf-8'), AES.MODE_CBC, iv=bytearray(16)
+        PRESHARED_KEY, AES.MODE_CBC, iv=bytearray(16)
     )
     doubleEncDataframe = sharedKeyEncryptor.encrypt(bytes(encDataframe))
 
