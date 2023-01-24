@@ -94,7 +94,10 @@ class ConnectionHandler(StreamRequestHandler):
         }
         name, fn = commands[mode]
         print(name)
-        fn(self)
+        try:
+            fn(self)
+        except Exception as e:
+            print(e)
 
 
 def deleteDevice(handler: StreamRequestHandler):
@@ -486,7 +489,6 @@ def openDoor():
         scheduler.cancel(event)
     GPIO.output(GPIO_PIN, GPIO.LOW)
     scheduler.enter(5, 1, lambda: GPIO.output(GPIO_PIN, GPIO.HIGH))
-    scheduler.run()
 
 
 def logBytes(name: str, b: bytes):
