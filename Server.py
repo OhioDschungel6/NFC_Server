@@ -26,7 +26,7 @@ GPIO_PIN = 7
 GPIO.setmode(GPIO.BOARD)
 # The current pin is pin nr 7 (GPIO 4 on raspi 2)
 GPIO.setup(GPIO_PIN, GPIO.OUT)
-GPIO.output(GPIO_PIN, GPIO.LOW)
+GPIO.output(GPIO_PIN, GPIO.HIGH)
 
 KEY_DATABASE = "keys.sqlite"
 PRESHARED_KEY = bytes(16)
@@ -484,8 +484,8 @@ def openDoor():
 
     for event in scheduler.queue:
         scheduler.cancel(event)
-    GPIO.output(GPIO_PIN, GPIO.HIGH)
-    scheduler.enter(5, 1, lambda: GPIO.output(GPIO_PIN, GPIO.LOW))
+    GPIO.output(GPIO_PIN, GPIO.LOW)
+    scheduler.enter(5, 1, lambda: GPIO.output(GPIO_PIN, GPIO.HIGH))
     scheduler.run()
 
 
