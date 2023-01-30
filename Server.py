@@ -5,6 +5,7 @@ from io import BytesIO
 from socketserver import ThreadingTCPServer, StreamRequestHandler, TCPServer
 
 from Crypto.Cipher import DES3
+from Crypto.Cipher import DES
 from Crypto.Cipher import AES
 from Crypto.Hash import SHA256
 from Crypto.PublicKey import ECC
@@ -71,7 +72,7 @@ TESTDATA = {
     ])
 }
 
-sessionKeys = ExpiringDict(max_len=100,max_age_seconds=5 * 60)
+sessionKeys = ExpiringDict(max_len=100, max_age_seconds=5 * 60)
 
 unitTest = False
 debug = False
@@ -274,9 +275,9 @@ def changeKey(handler: StreamRequestHandler):
         buffer.extend(bytes(blockSize - lastBlockSize))
 
     if authType == KEYTYPE_2K3DES:
-        encryptor = DES3.new(sessionKey, DES3.MODE_CBC, iv=bytearray(8))
+        encryptor = create_des_des3(sessionKey, iv=bytearray(8))
     elif authType == KEYTYPE_3K3DES:
-        encryptor = DES3.new(sessionKey, DES3.MODE_CBC, iv=bytearray(8))
+        encryptor = create_des_des3(sessionKey, iv=bytearray(8))
     elif authType == KEYTYPE_AES:
         encryptor = AES.new(sessionKey, AES.MODE_CBC, iv=bytearray(16))
     else:
@@ -395,9 +396,9 @@ def authenticate(handler: StreamRequestHandler, withOpenDoor=False):
     rndSize = ROUNDSIZE[keytype]
     # Step 3
     if keytype == KEYTYPE_2K3DES:
-        decryptor = DES3.new(key, DES3.MODE_CBC, iv=bytearray(8))
+        decryptor = create_des_des3(key, iv=bytearray(8))
     elif keytype == KEYTYPE_3K3DES:
-        decryptor = DES3.new(key, DES3.MODE_CBC, iv=bytearray(8))
+        decryptor = create_des_des3(key, iv=bytearray(8))
     elif keytype == KEYTYPE_AES:
         decryptor = AES.new(key, AES.MODE_CBC, bytearray(16))
     else:
@@ -412,9 +413,9 @@ def authenticate(handler: StreamRequestHandler, withOpenDoor=False):
     RndARndBPrime = RndA + RndBPrime
 
     if keytype == KEYTYPE_2K3DES:
-        encryptor = DES3.new(key, DES3.MODE_CBC, iv=ekRndB)
+        encryptor = create_des_des3(key, iv=ekRndB)
     elif keytype == KEYTYPE_3K3DES:
-        encryptor = DES3.new(key, DES3.MODE_CBC, iv=ekRndB[8:16])
+        encryptor = create_des_des3(key, iv=ekRndB[8:16])
     elif keytype == KEYTYPE_AES:
         encryptor = AES.new(key, AES.MODE_CBC, iv=ekRndB)
     else:
@@ -428,9 +429,9 @@ def authenticate(handler: StreamRequestHandler, withOpenDoor=False):
     ekRndAPrime = handler.rfile.read(rndSize)
 
     if keytype == KEYTYPE_2K3DES:
-        decryptor = DES3.new(key, DES3.MODE_CBC, iv=ekRndARndBPrime[8:16])
+        decryptor = create_des_des3(key, iv=ekRndARndBPrime[8:16])
     elif keytype == KEYTYPE_3K3DES:
-        decryptor = DES3.new(key, DES3.MODE_CBC, iv=ekRndARndBPrime[24:32])
+        decryptor = create_des_des3(key, iv=ekRndARndBPrime[24:32])
     elif keytype == KEYTYPE_AES:
         decryptor = AES.new(key, AES.MODE_CBC, iv=ekRndARndBPrime[16:32])
 
@@ -519,6 +520,14 @@ def getIPAdress():
     ip = s.getsockname()[0]
     s.close()
     return ip
+
+# Using the DES3 constructor for a DES key causes a runtime error
+
+
+def create_des_des3(key, iv):
+    if key[:8] == key[8:16] or key[-16:-8] == key[-8:]:
+        return DES.new(key, DES.MODE_CBC, iv=iv)
+    return DES3.new(key, DES3.MODE_CBC, iv=iv)
 
 
 if __name__ == '__main__':
